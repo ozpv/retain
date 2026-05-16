@@ -4,7 +4,7 @@ use crate::{
     RetainPluginMainThread, RetainPluginShared,
     params::{GestureChange, RetainParamsLocal, RetainParamsShared},
 };
-use clack_extensions::{audio_ports::*, params::PluginAudioProcessorParams};
+use clack_extensions::{audio_ports::*, latency::HostLatency, params::PluginAudioProcessorParams};
 use clack_plugin::{
     events::event_types::{ParamGestureBeginEvent, ParamGestureEndEvent},
     prelude::*,
@@ -18,20 +18,24 @@ pub struct RetainPluginAudioProcessor<'a> {
     /// The local state of the parameters
     params: RetainParamsLocal,
     /// A reference to the plugin's shared data.
-    shared: &'a RetainPluginShared,
+    shared: &'a RetainPluginShared<'a>,
     /// Our handle to the host
     host: HostAudioProcessorHandle<'a>,
 }
 
-impl<'a> PluginAudioProcessor<'a, RetainPluginShared, RetainPluginMainThread<'a>>
+impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread<'a>>
     for RetainPluginAudioProcessor<'a>
 {
     fn activate(
         host: HostAudioProcessorHandle<'a>,
-        _main_thread: &mut RetainPluginMainThread,
-        shared: &'a RetainPluginShared,
+        main_thread: &mut RetainPluginMainThread,
+        shared: &'a RetainPluginShared<'a>,
         _audio_config: PluginAudioConfiguration,
     ) -> Result<Self, PluginError> {
+        if let Some(latency) = shared.host.get_extension::<HostLatency>() {
+            latency.changed(&mut main_thread.host_main_thread);
+        }
+
         // This is where we would allocate intermediate buffers and such if we needed them.
         Ok(Self {
             host,
@@ -78,20 +82,21 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared, RetainPluginMainThread<'a>
 
         // Now let's process the audio, while splitting the processing in batches between each
         // sample-accurate event.
-
         for event_batch in events.input.batch() {
             // Process all param events in this batch
             for event in event_batch.events() {
                 self.params.handle_event(event);
             }
 
-            // Get the order value after all parameter changes have been handled.
-            let order = self.params.get_order();
+            // Get the parameters after all changes have been handled.
+            let _order = self.params.get_order();
+            let _window_size = self.params.get_window_size();
 
-            for buf in channel_buffers.iter_mut().flatten() {
-                for sample in buf.iter_mut() {
-                    *sample = order as f32;
-                }
+            // process in place here
+            if let [Some(left), Some(right)] = &mut channel_buffers {
+                for _ in left.iter_mut() {}
+
+                for _ in right.iter_mut() {}
             }
         }
 

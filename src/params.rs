@@ -218,11 +218,12 @@ impl RetainParamsLocal {
     }
 }
 
+/// To save the plugin state (parameter values) using protocol buffers
 #[derive(Message)]
 struct PluginState {
-    #[prost(uint64, tag = "0")]
-    order: u64,
     #[prost(uint64, tag = "1")]
+    order: u64,
+    #[prost(uint64, tag = "2")]
     window_size: u64,
 }
 
@@ -261,7 +262,7 @@ impl PluginStateImpl for RetainPluginMainThread<'_> {
 
     fn load(&mut self, input: &mut InputStream) -> Result<(), PluginError> {
         let mut data = vec![];
-        input.read_exact(&mut data)?;
+        input.read_to_end(&mut data)?;
 
         let data = PluginState::decode(&data[..])?;
 

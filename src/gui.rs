@@ -42,7 +42,7 @@ pub struct RetainPluginGui {
 
 impl RetainPluginGui {
     /// Creates a new GUI window, and embeds it into the given `parent`.
-    pub fn new(parent: Window<'_>, state: &RetainPluginShared) -> Self {
+    pub fn new(parent: Window<'_>, plugin_state: &RetainPluginShared) -> Self {
         let settings = WindowOpenOptions {
             title: "Retain".to_string(),
             size: Size::new(1000.0, 500.0),
@@ -56,7 +56,7 @@ impl RetainPluginGui {
             &parent,
             settings,
             GraphicsConfig::default(),
-            AppState::new(&state.params),
+            AppState::new(&plugin_state.params),
             move |egui_ctx: &Context, _queue: &mut Queue, _state: &mut AppState| {
                 tx.send(egui_ctx.clone()).unwrap();
             },

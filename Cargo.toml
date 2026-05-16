@@ -17,6 +17,7 @@ clack-extensions = { path = "../clack/extensions", features = [
     "params",
     "raw-window-handle_05",
     "state",
+	"latency",
 ] }
 baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "237d323c729f3aa99476ba3efa50129c5e86cad3", version = "0.1.0" }
 egui-baseview = { git = "https://codeberg.org/BillyDM/egui-baseview.git", version = "0.7.0" }
@@ -24,13 +25,14 @@ egui-baseview = { git = "https://codeberg.org/BillyDM/egui-baseview.git", versio
 # to serialize parameters and save the plugin state
 prost = "0.14.3"
 prost-build = "0.14.3"
+realfft = { version = "3.5.0", features = ["avx", "neon", "sse"] }
 
 [build-dependencies]
 prost-build = "0.14.3"
 
 [profile.release]
 opt-level = 3
-lto = "fat"
+lto = true
 codegen-units = 1
 panic = "abort"
-strip = "debuginfo"
+strip = true
