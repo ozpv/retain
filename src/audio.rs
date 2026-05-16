@@ -3,8 +3,16 @@
 use crate::{
     RetainPluginMainThread, RetainPluginShared,
     params::{GestureChange, RetainParamsLocal, RetainParamsShared},
+    retain::retain_top_n_magnitudes,
+    windowed_fft::WindowedRealFft,
 };
-use clack_extensions::{audio_ports::*, latency::HostLatency, params::PluginAudioProcessorParams};
+use clack_extensions::{
+    audio_ports::{
+        AudioPortFlags, AudioPortInfo, AudioPortInfoWriter, AudioPortType, PluginAudioPortsImpl,
+    },
+    latency::HostLatency,
+    params::PluginAudioProcessorParams,
+};
 use clack_plugin::{
     events::event_types::{ParamGestureBeginEvent, ParamGestureEndEvent},
     prelude::*,
@@ -21,6 +29,9 @@ pub struct RetainPluginAudioProcessor<'a> {
     shared: &'a RetainPluginShared<'a>,
     /// Our handle to the host
     host: HostAudioProcessorHandle<'a>,
+    /// Fft for the left channel
+    fft_left: WindowedRealFft,
+	fft_right: WindowedRealFft,
 }
 
 impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread<'a>>
@@ -36,11 +47,16 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
             latency.changed(&mut main_thread.host_main_thread);
         }
 
+        let fft_left = WindowedRealFft::new(32768);
+		let fft_right = WindowedRealFft::new(32768);
+
         // This is where we would allocate intermediate buffers and such if we needed them.
         Ok(Self {
-            host,
-            shared,
             params: RetainParamsLocal::new(&shared.params),
+            shared,
+            host,
+            fft_left,
+			fft_right,
         })
     }
 
@@ -89,14 +105,35 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
             }
 
             // Get the parameters after all changes have been handled.
-            let _order = self.params.get_order();
-            let _window_size = self.params.get_window_size();
+            let order = self.params.get_order();
 
             // process in place here
             if let [Some(left), Some(right)] = &mut channel_buffers {
-                for _ in left.iter_mut() {}
+                for sample in left.iter_mut() {
+                    if self.fft_left.push_front_input(*sample) {
+                        self.fft_left.forward();
 
-                for _ in right.iter_mut() {}
+                        retain_top_n_magnitudes(self.fft_left.get_spectrum(), order);
+
+                        self.fft_left.inverse();
+                        self.fft_left.clear_input();
+                    }
+
+                    *sample = self.fft_left.pop_back_output();
+                }
+
+                for sample in right.iter_mut() {
+					if self.fft_right.push_front_input(*sample) {
+                        self.fft_right.forward();
+
+                        retain_top_n_magnitudes(self.fft_right.get_spectrum(), order);
+
+                        self.fft_right.inverse();
+                        self.fft_right.clear_input();
+                    }
+
+                    *sample = self.fft_right.pop_back_output();
+				}
             }
         }
 

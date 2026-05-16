@@ -1,12 +1,13 @@
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::return_self_not_must_use)]
 
-use crate::window::{
+/*use crate::window::{
     BlackmanHarrisWindow, HammingWindow, HannWindow, RectangularWindow, WindowFunction,
-};
+};*/
+use crate::window_function::{RectangularWindow, WindowFunction};
 use num_complex::Complex;
 use realfft::{ComplexToReal, RealFftPlanner, RealToComplex};
-use std::sync::Arc;
+use std::{collections::VecDeque, sync::Arc};
 
 pub struct WindowedRealFft {
     fft_size: usize,
@@ -14,16 +15,31 @@ pub struct WindowedRealFft {
     forward: Arc<dyn RealToComplex<f32>>,
     inverse: Arc<dyn ComplexToReal<f32>>,
     window_function: Box<dyn WindowFunction>,
-    original_length: usize,
+    input: VecDeque<f32>,
+    output: VecDeque<f32>,
+    spectrum: Vec<Complex<f32>>,
+    scratch: Vec<Complex<f32>>,
 }
 
 impl WindowedRealFft {
-    pub fn new(fft_size: usize) -> Self {
+    pub fn new(mut fft_size: usize) -> Self {
+		if fft_size == 0 {
+			fft_size = 1;
+		}
+		
         let mut planner = RealFftPlanner::new();
         let forward = planner.plan_fft_forward(fft_size);
         let inverse = planner.plan_fft_inverse(fft_size);
 
-        let window_function = Box::new(HannWindow::new(fft_size));
+        let window_function = Box::new(RectangularWindow::new(fft_size));
+
+        let input = VecDeque::with_capacity(fft_size);
+        let output = VecDeque::with_capacity(fft_size);
+
+        let spectrum = vec![Complex::ZERO; (fft_size / 2) + 1];
+
+        let max_scratch_len = forward.get_scratch_len().max(inverse.get_scratch_len());
+        let scratch = vec![Complex::ZERO; max_scratch_len];
 
         Self {
             fft_size,
@@ -31,81 +47,84 @@ impl WindowedRealFft {
             forward,
             inverse,
             window_function,
-            original_length: 0,
+            input,
+            output,
+            spectrum,
+            scratch,
         }
     }
 
-    pub fn fft_size(mut self, value: usize) -> Self {
+    pub fn fft_size(mut self, mut value: usize) -> Self {
+		if value == 0 {
+			value = 1;
+		}
+		
         self.fft_size = value;
 
-        let forward = self.planner.plan_fft_forward(value);
-        let inverse = self.planner.plan_fft_inverse(value);
+        self.forward = self.planner.plan_fft_forward(self.fft_size);
+        self.inverse = self.planner.plan_fft_inverse(self.fft_size);
 
-        self.forward = forward;
-        self.inverse = inverse;
+        self.input.reserve_exact(self.fft_size);
+        self.output.reserve_exact(self.fft_size);
+
+        self.input.clear();
+        self.output.clear();
+
+        self.spectrum.resize((self.fft_size / 2) + 1, Complex::ZERO);
+
+        let max_scratch_len = self
+            .forward
+            .get_scratch_len()
+            .max(self.inverse.get_scratch_len());
+        self.scratch.resize(max_scratch_len, Complex::ZERO);
 
         self
     }
 
-    pub fn original_length(&mut self, value: usize) {
-        self.original_length = value;
+    pub fn clear_input(&mut self) {
+        self.input.clear();
     }
 
-    pub fn forward(&mut self, data: impl Into<Vec<f32>>) -> Vec<Vec<Complex<f32>>> {
-        let mut data = data.into();
+    pub fn push_front_input(&mut self, value: f32) -> bool {
+        self.input.push_front(value);
 
-        let Some(new_length) = data.len().checked_next_multiple_of(self.fft_size) else {
-            return vec![];
-        };
-
-        self.original_length = data.len();
-
-        data.resize(new_length, 0.0);
-
-        self.window_function
-            .apply(data)
-            .into_par_iter()
-            .map(|mut chunk| {
-                let mut output = self.forward.make_output_vec();
-
-                self.forward.process(&mut chunk, &mut output).unwrap();
-
-                output
-            })
-            .collect::<Vec<Vec<Complex<f32>>>>()
+        self.input.len() >= self.fft_size
     }
 
-    pub fn inverse(&mut self, data: Vec<Vec<Complex<f32>>>) -> Vec<f32> {
-        let data = data
-            .into_par_iter()
-            .map(|mut chunk| {
-                let mut real_output = self.inverse.make_output_vec();
-
-                self.inverse.process(&mut chunk, &mut real_output).unwrap();
-
-                let chunk_size_f32 = self.fft_size as f32;
-
-                real_output
-                    .into_iter()
-                    .map(|sample| sample / chunk_size_f32)
-                    .collect::<Vec<f32>>()
-            })
-            .collect::<Vec<Vec<f32>>>();
-
-        let mut output = self.window_function.reverse(data);
-
-        output.truncate(self.original_length);
-
-        output
+    pub fn pop_back_output(&mut self) -> f32 {
+        self.output.pop_back().unwrap_or(0.0)
     }
 
-    pub fn i32_to_f32(item: Vec<i32>) -> Vec<f32> {
-        item.into_iter().map(f32::from).collect::<Vec<f32>>()
+    pub fn get_spectrum(&mut self) -> &mut [Complex<f32>] {
+        &mut self.spectrum
     }
 
-    pub fn f32_to_i32(item: Vec<f32>) -> Vec<i32> {
-        item.into_iter()
-            .map(|value| value as i32)
-            .collect::<Vec<i32>>()
+    pub fn forward(&mut self) {
+        self.window_function.apply(self.input.make_contiguous());
+
+        self.forward
+            .process_with_scratch(
+                self.input.make_contiguous(),
+                &mut self.spectrum,
+                &mut self.scratch,
+            );
+    }
+
+    pub fn inverse(&mut self) {
+		self.output.resize(self.fft_size, 0.0);
+		
+        self.inverse
+            .process_with_scratch(
+                &mut self.spectrum,
+                self.output.make_contiguous(),
+                &mut self.scratch,
+            );
+
+        let fft_size_f32 = self.fft_size as f32;
+        for sample in &mut self.output {
+            *sample = *sample / fft_size_f32;
+        }
+
+        self.window_function.reverse(self.output.make_contiguous());
     }
 }

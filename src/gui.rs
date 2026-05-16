@@ -6,7 +6,7 @@ use crate::{
     window_size::WindowSize,
 };
 use baseview::{Size, WindowHandle, WindowOpenOptions, WindowScalePolicy, gl::GlConfig};
-use clack_extensions::gui::*;
+use clack_extensions::gui::{GuiApiType, GuiConfiguration, GuiSize, PluginGuiImpl, Window};
 use clack_plugin::prelude::*;
 use egui_baseview::{
     EguiWindow, GraphicsConfig, Queue,

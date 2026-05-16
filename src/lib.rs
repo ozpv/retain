@@ -4,19 +4,25 @@ use crate::{
     params::{RetainParamsLocal, RetainParamsShared},
 };
 use clack_extensions::{
-    audio_ports::*,
+    audio_ports::PluginAudioPorts,
     gui::PluginGui,
     latency::{PluginLatency, PluginLatencyImpl},
-    params::*,
+    params::PluginParams,
     state::PluginState,
 };
-use clack_plugin::prelude::*;
+use clack_plugin::{
+    plugin::features::{AUDIO_EFFECT, STEREO},
+    prelude::*,
+};
 use std::sync::Arc;
 
 mod audio;
 mod gui;
 mod params;
+mod retain;
+mod window_function;
 mod window_size;
+mod windowed_fft;
 
 /// The type that represents our plugin in Clack.
 ///
@@ -43,8 +49,6 @@ impl Plugin for RetainPlugin {
 
 impl DefaultPluginFactory for RetainPlugin {
     fn get_descriptor() -> PluginDescriptor {
-        use clack_plugin::plugin::features::*;
-
         PluginDescriptor::new("com.haemolacriaa.retain", "Retain")
             .with_description("Retains only the nth largest magnitude frequencies in the signal")
             .with_features([AUDIO_EFFECT, STEREO])
@@ -79,7 +83,7 @@ impl<'a> RetainPluginShared<'a> {
     fn new(host: HostSharedHandle<'a>) -> Self {
         RetainPluginShared {
             params: Arc::new(RetainParamsShared::new()),
-            host: host,
+            host,
         }
     }
 }

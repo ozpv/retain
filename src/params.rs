@@ -1,7 +1,12 @@
 //! Contains all types and implementations related to parameter management.
 
 use crate::{RetainPluginMainThread, window_size::WindowSize};
-use clack_extensions::{params::*, state::PluginStateImpl};
+use clack_extensions::{
+    params::{
+        ParamDisplayWriter, ParamInfo, ParamInfoFlags, ParamInfoWriter, PluginMainThreadParams,
+    },
+    state::PluginStateImpl,
+};
 use clack_plugin::{
     events::{event_types::ParamValueEvent, spaces::CoreEventSpace},
     prelude::*,
@@ -18,7 +23,7 @@ use std::{
 
 /// The default value of the order parameter.
 const DEFAULT_ORDER: usize = 1000;
-pub const DEFAULT_WINDOW_SIZE: WindowSize = WindowSize::Size128;
+pub const DEFAULT_WINDOW_SIZE: WindowSize = WindowSize::Size32768;
 
 /// A struct that manages the parameters for our plugin.
 ///
