@@ -31,7 +31,8 @@ pub struct RetainPluginAudioProcessor<'a> {
     host: HostAudioProcessorHandle<'a>,
     /// Fft for the left channel
     fft_left: WindowedRealFft,
-	fft_right: WindowedRealFft,
+    /// Fft for the right channel
+    fft_right: WindowedRealFft,
 }
 
 impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread<'a>>
@@ -39,24 +40,22 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
 {
     fn activate(
         host: HostAudioProcessorHandle<'a>,
-        main_thread: &mut RetainPluginMainThread,
+        _main_thread: &mut RetainPluginMainThread,
         shared: &'a RetainPluginShared<'a>,
         _audio_config: PluginAudioConfiguration,
     ) -> Result<Self, PluginError> {
-        if let Some(latency) = shared.host.get_extension::<HostLatency>() {
-            latency.changed(&mut main_thread.host_main_thread);
-        }
+        let params = RetainParamsLocal::new(&shared.params);
 
-        let fft_left = WindowedRealFft::new(32768);
-		let fft_right = WindowedRealFft::new(32768);
+        let fft_left = WindowedRealFft::new(params.get_window_size().into());
+        let fft_right = WindowedRealFft::new(params.get_window_size().into());
 
         // This is where we would allocate intermediate buffers and such if we needed them.
         Ok(Self {
-            params: RetainParamsLocal::new(&shared.params),
+            params,
             shared,
             host,
             fft_left,
-			fft_right,
+            fft_right,
         })
     }
 
@@ -93,8 +92,26 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
             }
         }
 
+        let prev_window_size = self.params.get_window_size();
+
         // Receive any param updates from the main thread and/or the GUI.
         let has_ui_param_updates = self.params.fetch_updates(&self.shared.params);
+
+        // update window size and latency if it has changed
+        // updates fft window sizes only if necessary
+        let window_size = self.params.get_window_size();
+        if prev_window_size != window_size {
+            self.fft_left.window_size(window_size.into());
+            self.fft_right.window_size(window_size.into());
+
+            if let Some(latency) = self.shared.host.get_extension::<HostLatency>() {
+                // should be safe
+                let mut main = unsafe { self.shared.host.as_main_thread_unchecked() };
+
+                latency.changed(&mut main);
+                // self.shared.host.request_restart();
+            }
+        }
 
         // Now let's process the audio, while splitting the processing in batches between each
         // sample-accurate event.
@@ -107,10 +124,20 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
             // Get the parameters after all changes have been handled.
             let order = self.params.get_order();
 
-            // process in place here
+            if order == 0 {
+                for channel in channel_buffers.iter_mut().flatten() {
+                    for sample in channel.iter_mut() {
+                        *sample = 0.0;
+                    }
+                }
+
+                continue;
+            }
+
+            // process samples in place here
             if let [Some(left), Some(right)] = &mut channel_buffers {
                 for sample in left.iter_mut() {
-                    if self.fft_left.push_front_input(*sample) {
+                    if self.fft_left.push_back_input(*sample) {
                         self.fft_left.forward();
 
                         retain_top_n_magnitudes(self.fft_left.get_spectrum(), order);
@@ -119,11 +146,11 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
                         self.fft_left.clear_input();
                     }
 
-                    *sample = self.fft_left.pop_back_output();
+                    *sample = self.fft_left.pop_front_output();
                 }
 
                 for sample in right.iter_mut() {
-					if self.fft_right.push_front_input(*sample) {
+                    if self.fft_right.push_back_input(*sample) {
                         self.fft_right.forward();
 
                         retain_top_n_magnitudes(self.fft_right.get_spectrum(), order);
@@ -132,8 +159,8 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
                         self.fft_right.clear_input();
                     }
 
-                    *sample = self.fft_right.pop_back_output();
-				}
+                    *sample = self.fft_right.pop_front_output();
+                }
             }
         }
 

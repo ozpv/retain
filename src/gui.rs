@@ -66,9 +66,10 @@ impl RetainPluginGui {
                 egui::CentralPanel::default().show(egui_ctx, |ui| {
                     ui.heading("Retain");
                     let mut order = state.local_params.get_order();
+                    let window_size = state.local_params.get_window_size();
 
                     let slider = ui.add(
-                        Slider::new(&mut order, 0..=100_000)
+                        Slider::new(&mut order, 0..=window_size)
                             .text("Order")
                             .logarithmic(true),
                     );
@@ -82,20 +83,18 @@ impl RetainPluginGui {
                     state.local_params.push_gesture(&state.shared_params);
 
                     let mut window_size = WindowSize::from(state.local_params.get_window_size());
-
                     ComboBox::from_label("Window Size")
                         .selected_text(window_size.as_str())
                         .show_ui(ui, |ui| {
-                            for size in WindowSize::into_iter() {
+                            for size in WindowSize::iter() {
                                 let display = size.as_str();
+                                let inner = size.inner();
 
                                 if ui
                                     .selectable_value(&mut window_size, size, display)
                                     .changed()
                                 {
-                                    let u = window_size.value();
-
-                                    state.local_params.set_window_size(u);
+                                    state.local_params.set_window_size(inner);
                                     state.local_params.push_updates(&state.shared_params);
                                 }
                             }

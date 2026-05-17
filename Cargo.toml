@@ -26,8 +26,8 @@ egui-baseview = { git = "https://codeberg.org/BillyDM/egui-baseview.git", versio
 prost = "0.14.3"
 prost-build = "0.14.3"
 realfft = { version = "3.5.0", features = ["avx", "neon", "sse"] }
-hashbrown = "0.17.1"
 num-complex = "0.4.6"
+rustc-hash = "2.1.2"
 
 [build-dependencies]
 prost-build = "0.14.3"

@@ -22,8 +22,8 @@ use std::{
 };
 
 /// The default value of the order parameter.
-const DEFAULT_ORDER: usize = 1000;
-pub const DEFAULT_WINDOW_SIZE: WindowSize = WindowSize::Size32768;
+const DEFAULT_ORDER: usize = 1;
+pub const DEFAULT_WINDOW_SIZE: WindowSize = WindowSize::Size4096;
 
 /// A struct that manages the parameters for our plugin.
 ///
@@ -48,9 +48,13 @@ impl RetainParamsShared {
     pub fn new() -> Self {
         Self {
             order: AtomicUsize::new(DEFAULT_ORDER),
-            window_size: AtomicUsize::new(DEFAULT_WINDOW_SIZE.value()),
+            window_size: AtomicUsize::new(DEFAULT_WINDOW_SIZE.into_inner()),
             has_gesture: AtomicBool::new(false),
         }
+    }
+
+    pub fn get_window_size(&self) -> usize {
+        self.window_size.load(Ordering::Relaxed)
     }
 }
 
@@ -102,7 +106,7 @@ impl RetainParamsLocal {
     /// It is clamped to the range `0..=100_000`.
     #[inline]
     pub fn set_order(&mut self, value: usize) {
-        self.order = value.clamp(0, 100_000);
+        self.order = value;
     }
 
     /// Returns the current window size value.
@@ -297,7 +301,7 @@ impl PluginMainThreadParams for RetainPluginMainThread<'_> {
             name: b"Order",
             module: b"",
             min_value: 0.0,
-            max_value: 100_000.0,
+            max_value: f64::MAX,
             default_value: DEFAULT_ORDER as f64,
         });
 
@@ -309,7 +313,7 @@ impl PluginMainThreadParams for RetainPluginMainThread<'_> {
             module: b"",
             min_value: 128.0,
             max_value: usize::MAX as f64,
-            default_value: DEFAULT_WINDOW_SIZE.value() as f64,
+            default_value: DEFAULT_WINDOW_SIZE.into_inner() as f64,
         });
     }
 

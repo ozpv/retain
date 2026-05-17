@@ -59,13 +59,12 @@ impl DefaultPluginFactory for RetainPlugin {
     }
 
     fn new_main_thread<'a>(
-        host: HostMainThreadHandle<'a>,
+        _host: HostMainThreadHandle<'a>,
         shared: &'a Self::Shared<'a>,
     ) -> Result<Self::MainThread<'a>, PluginError> {
         Ok(Self::MainThread {
             shared,
             params: RetainParamsLocal::new(&shared.params),
-            host_main_thread: host,
             gui: None,
         })
     }
@@ -75,15 +74,14 @@ impl DefaultPluginFactory for RetainPlugin {
 pub struct RetainPluginShared<'a> {
     /// The plugin's parameter values.
     params: Arc<RetainParamsShared>,
-    /// A handle to the host
-    host: HostSharedHandle<'a>,
+    host: Arc<HostSharedHandle<'a>>,
 }
 
 impl<'a> RetainPluginShared<'a> {
     fn new(host: HostSharedHandle<'a>) -> Self {
         RetainPluginShared {
             params: Arc::new(RetainParamsShared::new()),
-            host,
+            host: Arc::new(host),
         }
     }
 }
@@ -96,7 +94,6 @@ pub struct RetainPluginMainThread<'a> {
     params: RetainParamsLocal,
     /// A reference to the plugin's shared data.
     shared: &'a RetainPluginShared<'a>,
-    host_main_thread: HostMainThreadHandle<'a>,
     /// The plugin's GUI state and context
     gui: Option<RetainPluginGui>,
 }
@@ -111,7 +108,7 @@ impl<'a> PluginMainThread<'a, RetainPluginShared<'a>> for RetainPluginMainThread
 
 impl PluginLatencyImpl for RetainPluginMainThread<'_> {
     fn get(&mut self) -> u32 {
-        self.params.get_window_size() as u32
+        self.shared.params.get_window_size() as u32
     }
 }
 

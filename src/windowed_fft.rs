@@ -4,13 +4,16 @@
 /*use crate::window::{
     BlackmanHarrisWindow, HammingWindow, HannWindow, RectangularWindow, WindowFunction,
 };*/
-use crate::window_function::{RectangularWindow, WindowFunction};
+use crate::{
+    window_function::{RectangularWindow, WindowFunction},
+    window_size::WindowSize,
+};
 use num_complex::Complex;
 use realfft::{ComplexToReal, RealFftPlanner, RealToComplex};
 use std::{collections::VecDeque, sync::Arc};
 
 pub struct WindowedRealFft {
-    fft_size: usize,
+    window_size: usize,
     planner: RealFftPlanner<f32>,
     forward: Arc<dyn RealToComplex<f32>>,
     inverse: Arc<dyn ComplexToReal<f32>>,
@@ -22,27 +25,25 @@ pub struct WindowedRealFft {
 }
 
 impl WindowedRealFft {
-    pub fn new(mut fft_size: usize) -> Self {
-		if fft_size == 0 {
-			fft_size = 1;
-		}
-		
+    pub fn new(window_size: WindowSize) -> Self {
+        let window_size = window_size.into_inner();
+
         let mut planner = RealFftPlanner::new();
-        let forward = planner.plan_fft_forward(fft_size);
-        let inverse = planner.plan_fft_inverse(fft_size);
+        let forward = planner.plan_fft_forward(window_size);
+        let inverse = planner.plan_fft_inverse(window_size);
 
-        let window_function = Box::new(RectangularWindow::new(fft_size));
+        let window_function = Box::new(RectangularWindow::new(window_size));
 
-        let input = VecDeque::with_capacity(fft_size);
-        let output = VecDeque::with_capacity(fft_size);
+        let input = VecDeque::with_capacity(window_size);
+        let output = VecDeque::with_capacity(window_size);
 
-        let spectrum = vec![Complex::ZERO; (fft_size / 2) + 1];
+        let spectrum = vec![Complex::ZERO; (window_size / 2) + 1];
 
-        let max_scratch_len = forward.get_scratch_len().max(inverse.get_scratch_len());
-        let scratch = vec![Complex::ZERO; max_scratch_len];
+        // scratches should be the same length for both left and right channels
+        let scratch = forward.make_scratch_vec();
 
         Self {
-            fft_size,
+            window_size,
             planner,
             forward,
             inverse,
@@ -54,45 +55,41 @@ impl WindowedRealFft {
         }
     }
 
-    pub fn fft_size(mut self, mut value: usize) -> Self {
-		if value == 0 {
-			value = 1;
-		}
-		
-        self.fft_size = value;
+    pub fn window_size(&mut self, window_size: WindowSize) {
+        if window_size == self.window_size.into() {
+            return;
+        }
 
-        self.forward = self.planner.plan_fft_forward(self.fft_size);
-        self.inverse = self.planner.plan_fft_inverse(self.fft_size);
+        self.window_size = window_size.into_inner();
 
-        self.input.reserve_exact(self.fft_size);
-        self.output.reserve_exact(self.fft_size);
+        self.forward = self.planner.plan_fft_forward(self.window_size);
+        self.inverse = self.planner.plan_fft_inverse(self.window_size);
+
+        self.input.reserve_exact(self.window_size);
+        self.output.reserve_exact(self.window_size);
 
         self.input.clear();
         self.output.clear();
 
-        self.spectrum.resize((self.fft_size / 2) + 1, Complex::ZERO);
+        self.spectrum
+            .resize((self.window_size / 2) + 1, Complex::ZERO);
 
-        let max_scratch_len = self
-            .forward
-            .get_scratch_len()
-            .max(self.inverse.get_scratch_len());
-        self.scratch.resize(max_scratch_len, Complex::ZERO);
-
-        self
+        self.scratch
+            .resize(self.forward.get_scratch_len(), Complex::ZERO);
     }
 
     pub fn clear_input(&mut self) {
         self.input.clear();
     }
 
-    pub fn push_front_input(&mut self, value: f32) -> bool {
-        self.input.push_front(value);
+    pub fn push_back_input(&mut self, value: f32) -> bool {
+        self.input.push_back(value);
 
-        self.input.len() >= self.fft_size
+        self.input.len() >= self.window_size
     }
 
-    pub fn pop_back_output(&mut self) -> f32 {
-        self.output.pop_back().unwrap_or(0.0)
+    pub fn pop_front_output(&mut self) -> f32 {
+        self.output.pop_front().unwrap_or(0.0)
     }
 
     pub fn get_spectrum(&mut self) -> &mut [Complex<f32>] {
@@ -102,27 +99,25 @@ impl WindowedRealFft {
     pub fn forward(&mut self) {
         self.window_function.apply(self.input.make_contiguous());
 
-        self.forward
-            .process_with_scratch(
-                self.input.make_contiguous(),
-                &mut self.spectrum,
-                &mut self.scratch,
-            );
+        let _ = self.forward.process_with_scratch(
+            self.input.make_contiguous(),
+            &mut self.spectrum,
+            &mut self.scratch,
+        );
     }
 
     pub fn inverse(&mut self) {
-		self.output.resize(self.fft_size, 0.0);
-		
-        self.inverse
-            .process_with_scratch(
-                &mut self.spectrum,
-                self.output.make_contiguous(),
-                &mut self.scratch,
-            );
+        self.output.resize(self.window_size, 0.0);
 
-        let fft_size_f32 = self.fft_size as f32;
+        let _ = self.inverse.process_with_scratch(
+            &mut self.spectrum,
+            self.output.make_contiguous(),
+            &mut self.scratch,
+        );
+
+        let window_size_f32 = self.window_size as f32;
         for sample in &mut self.output {
-            *sample = *sample / fft_size_f32;
+            *sample = *sample / window_size_f32;
         }
 
         self.window_function.reverse(self.output.make_contiguous());
