@@ -49,21 +49,6 @@ impl WindowSize {
         }
     }
 
-    pub fn into_inner(self) -> usize {
-        match self {
-            Self::Size128 => 128,
-            Self::Size256 => 256,
-            Self::Size512 => 512,
-            Self::Size1024 => 1024,
-            Self::Size2048 => 2048,
-            Self::Size4096 => 4096,
-            Self::Size8192 => 8192,
-            Self::Size16384 => 16384,
-            Self::Size32768 => 32768,
-            Self::Custom(x) => x,
-        }
-    }
-
     pub fn inner(&self) -> usize {
         match self {
             Self::Size128 => 128,

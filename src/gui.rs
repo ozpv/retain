@@ -45,7 +45,7 @@ impl RetainPluginGui {
     pub fn new(parent: Window<'_>, plugin_state: &RetainPluginShared) -> Self {
         let settings = WindowOpenOptions {
             title: "Retain".to_string(),
-            size: Size::new(1000.0, 500.0),
+            size: Size::new(600.0, 350.0),
             scale: WindowScalePolicy::SystemScaleFactor,
             gl_config: Some(GlConfig::default()),
         };
@@ -166,8 +166,8 @@ impl PluginGuiImpl for RetainPluginMainThread<'_> {
 
     fn get_size(&mut self) -> Option<GuiSize> {
         Some(GuiSize {
-            width: 1000,
-            height: 500,
+            width: 600,
+            height: 350,
         })
     }
 

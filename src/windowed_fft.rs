@@ -5,7 +5,7 @@
     BlackmanHarrisWindow, HammingWindow, HannWindow, RectangularWindow, WindowFunction,
 };*/
 use crate::{
-    window_function::{RectangularWindow, WindowFunction},
+    window_function::{HannWindow, RectangularWindow, WindowFunction},
     window_size::WindowSize,
 };
 use num_complex::Complex;
@@ -26,13 +26,12 @@ pub struct WindowedRealFft {
 
 impl WindowedRealFft {
     pub fn new(window_size: WindowSize) -> Self {
-        let window_size = window_size.into_inner();
+        let window_function = Box::new(HannWindow::new(&window_size));
+        let window_size = window_size.inner();
 
         let mut planner = RealFftPlanner::new();
         let forward = planner.plan_fft_forward(window_size);
         let inverse = planner.plan_fft_inverse(window_size);
-
-        let window_function = Box::new(RectangularWindow::new(window_size));
 
         let input = VecDeque::with_capacity(window_size);
         let output = VecDeque::with_capacity(window_size);
@@ -60,7 +59,8 @@ impl WindowedRealFft {
             return;
         }
 
-        self.window_size = window_size.into_inner();
+        self.window_function = Box::new(HannWindow::new(&window_size));
+        self.window_size = window_size.inner();
 
         self.forward = self.planner.plan_fft_forward(self.window_size);
         self.inverse = self.planner.plan_fft_inverse(self.window_size);
@@ -85,7 +85,7 @@ impl WindowedRealFft {
     pub fn push_back_input(&mut self, value: f32) -> bool {
         self.input.push_back(value);
 
-        self.input.len() >= self.window_size
+        self.input.len() >= self.window_function.needed()
     }
 
     pub fn pop_front_output(&mut self) -> f32 {
@@ -97,7 +97,7 @@ impl WindowedRealFft {
     }
 
     pub fn forward(&mut self) {
-        self.window_function.apply(self.input.make_contiguous());
+        self.window_function.apply(&mut self.input);
 
         let _ = self.forward.process_with_scratch(
             self.input.make_contiguous(),
@@ -117,7 +117,7 @@ impl WindowedRealFft {
 
         let window_size_f32 = self.window_size as f32;
         for sample in &mut self.output {
-            *sample = *sample / window_size_f32;
+            *sample /= window_size_f32;
         }
 
         self.window_function.reverse(self.output.make_contiguous());

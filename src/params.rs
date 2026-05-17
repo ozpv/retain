@@ -48,7 +48,7 @@ impl RetainParamsShared {
     pub fn new() -> Self {
         Self {
             order: AtomicUsize::new(DEFAULT_ORDER),
-            window_size: AtomicUsize::new(DEFAULT_WINDOW_SIZE.into_inner()),
+            window_size: AtomicUsize::new(DEFAULT_WINDOW_SIZE.inner()),
             has_gesture: AtomicBool::new(false),
         }
     }
@@ -313,7 +313,7 @@ impl PluginMainThreadParams for RetainPluginMainThread<'_> {
             module: b"",
             min_value: 128.0,
             max_value: usize::MAX as f64,
-            default_value: DEFAULT_WINDOW_SIZE.into_inner() as f64,
+            default_value: DEFAULT_WINDOW_SIZE.inner() as f64,
         });
     }
 
