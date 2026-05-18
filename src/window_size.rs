@@ -1,5 +1,5 @@
-/// The max value of the custom window size is u32::MAX.
-/// That's because it's the maximum latency one can report.
+/// The max value of the custom window size is `u32::MAX`.
+/// This is because it's the maximum latency one can report to a CLAP host.
 #[derive(Debug, PartialEq)]
 pub enum WindowSize {
     Size128,

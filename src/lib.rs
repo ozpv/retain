@@ -22,6 +22,7 @@ mod params;
 mod retain;
 mod window_function;
 mod window_size;
+mod window_type;
 mod windowed_fft;
 
 /// The type that represents our plugin in Clack.

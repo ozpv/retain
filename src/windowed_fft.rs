@@ -1,11 +1,8 @@
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::return_self_not_must_use)]
 
-/*use crate::window::{
-    BlackmanHarrisWindow, HammingWindow, HannWindow, RectangularWindow, WindowFunction,
-};*/
 use crate::{
-    window_function::{HannWindow, RectangularWindow, WindowFunction},
+    window_function::{BlackmanHarrisWindow, HannWindow, RectangularWindow, WindowFunction},
     window_size::WindowSize,
 };
 use num_complex::Complex;
@@ -26,7 +23,7 @@ pub struct WindowedRealFft {
 
 impl WindowedRealFft {
     pub fn new(window_size: WindowSize) -> Self {
-        let window_function = Box::new(HannWindow::new(&window_size));
+        let window_function = Box::new(BlackmanHarrisWindow::new(&window_size));
         let window_size = window_size.inner();
 
         let mut planner = RealFftPlanner::new();
@@ -53,6 +50,8 @@ impl WindowedRealFft {
             scratch,
         }
     }
+
+    pub fn window_function(&mut self, window_function: Box<dyn WindowFunction>) {}
 
     pub fn window_size(&mut self, window_size: WindowSize) {
         if window_size == self.window_size.into() {

@@ -23,8 +23,11 @@ baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "237d323c7
 egui-baseview = { git = "https://codeberg.org/BillyDM/egui-baseview.git", version = "0.7.0" }
 
 # to serialize parameters and save the plugin state
+# serde json could offer better backwards compatibility
+# for loading parameters in future updates
 prost = "0.14.3"
-prost-build = "0.14.3"
+
+# for calculation
 realfft = { version = "3.5.0", features = ["avx", "neon", "sse"] }
 num-complex = "0.4.6"
 rustc-hash = "2.1.2"
