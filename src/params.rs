@@ -1,6 +1,6 @@
 //! Contains all types and implementations related to parameter management.
 
-use crate::{RetainPluginMainThread, window_size::WindowSize};
+use crate::{RetainPluginMainThread, window_size::WindowSize, window_type::WindowType};
 use clack_extensions::{
     params::{
         ParamDisplayWriter, ParamInfo, ParamInfoFlags, ParamInfoWriter, PluginMainThreadParams,
@@ -18,12 +18,13 @@ use std::{
     ffi::CStr,
     fmt::Write as _,
     io::{Read, Write as _},
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
 };
 
 /// The default value of the order parameter.
 const DEFAULT_ORDER: usize = 1;
 pub const DEFAULT_WINDOW_SIZE: WindowSize = WindowSize::Size4096;
+const DEFAULT_WINDOW_TYPE: WindowType = WindowType::Hann;
 
 /// A struct that manages the parameters for our plugin.
 ///
@@ -35,6 +36,8 @@ pub struct RetainParamsShared {
     order: AtomicUsize,
     /// Window size of FFT
     window_size: AtomicUsize,
+    /// Type of window function of FFT
+    window_type: AtomicU8,
     /// Whether a gesture is currently active or not on the parameters
     has_gesture: AtomicBool,
 }
@@ -43,12 +46,14 @@ impl RetainParamsShared {
     /// The unique identifier for the order parameter.
     pub const PARAM_ORDER_ID: ClapId = ClapId::new(1);
     pub const PARAM_WINDOW_SIZE_ID: ClapId = ClapId::new(2);
+    pub const PARAM_WINDOW_TYPE_ID: ClapId = ClapId::new(3);
 
     /// Initializes the shared parameter value.
     pub fn new() -> Self {
         Self {
             order: AtomicUsize::new(DEFAULT_ORDER),
             window_size: AtomicUsize::new(DEFAULT_WINDOW_SIZE.inner()),
+            window_type: AtomicU8::new(DEFAULT_WINDOW_TYPE.as_bits()),
             has_gesture: AtomicBool::new(false),
         }
     }
@@ -81,6 +86,8 @@ pub struct RetainParamsLocal {
     order: usize,
     /// The local value of the window size paramter.
     window_size: usize,
+    /// The local value of the type of window function parameter.
+    window_type: WindowType,
     /// Whether the user is currently changing the parameter, that we know of
     pub has_gesture: bool,
 }
@@ -91,6 +98,7 @@ impl RetainParamsLocal {
         Self {
             order: shared.order.load(Ordering::Relaxed),
             window_size: shared.window_size.load(Ordering::Relaxed),
+            window_type: WindowType::from_bits(shared.window_type.load(Ordering::Relaxed)),
             has_gesture: shared.has_gesture.load(Ordering::Relaxed),
         }
     }
@@ -121,6 +129,18 @@ impl RetainParamsLocal {
         self.window_size = value;
     }
 
+    /// Returns the current local window type.
+    #[inline]
+    pub fn get_window_type(&self) -> &WindowType {
+        &self.window_type
+    }
+
+    /// Sets the current local window type from `bits`.
+    #[inline]
+    pub fn set_window_type_from_bits(&mut self, bits: u8) {
+        self.window_type = WindowType::from_bits(bits);
+    }
+
     /// Fetch updates from the `shared` state.
     ///
     /// If any of the parameters have been updated, this returns `true`.
@@ -128,10 +148,15 @@ impl RetainParamsLocal {
     pub fn fetch_updates(&mut self, shared: &RetainParamsShared) -> bool {
         let latest_order = shared.order.load(Ordering::Relaxed);
         let latest_window_size = shared.window_size.load(Ordering::Relaxed);
+        let latest_window_type = WindowType::from_bits(shared.window_type.load(Ordering::Relaxed));
 
-        if latest_order != self.order || latest_window_size != self.order {
+        if latest_order != self.order
+            || latest_window_size != self.order
+            || latest_window_type != self.window_type
+        {
             self.order = latest_order;
             self.window_size = latest_window_size;
+            self.window_type = latest_window_type;
 
             true
         } else {
@@ -146,8 +171,13 @@ impl RetainParamsLocal {
     pub fn push_updates(&self, shared: &RetainParamsShared) -> bool {
         let previous_order = shared.order.swap(self.order, Ordering::Relaxed);
         let previous_window_size = shared.window_size.swap(self.window_size, Ordering::Relaxed);
+        let previous_window_type = shared
+            .window_type
+            .swap(self.window_type.as_bits(), Ordering::Relaxed);
 
-        previous_order != self.order || previous_window_size != self.window_size
+        previous_order != self.order
+            || previous_window_size != self.window_size
+            || previous_window_type != self.window_type.as_bits()
     }
 
     /// Pushes the local gesture state to the `shared` state.
@@ -232,15 +262,18 @@ impl RetainParamsLocal {
 struct PluginState {
     #[prost(uint64, tag = "1")]
     order: u64,
-    #[prost(uint64, tag = "2")]
-    window_size: u64,
+    #[prost(uint32, tag = "2")]
+    window_size: u32,
+    #[prost(uint32, tag = "3")]
+    window_type: u32,
 }
 
 impl PluginState {
     fn copied(local_params: &RetainParamsLocal) -> Self {
         Self {
             order: local_params.get_order() as u64,
-            window_size: local_params.get_window_size() as u64,
+            window_size: local_params.get_window_size() as u32,
+            window_type: local_params.get_window_type().as_bits() as u32,
         }
     }
 
@@ -248,8 +281,12 @@ impl PluginState {
         self.order
     }
 
-    fn get_window_size(&self) -> u64 {
+    fn get_window_size(&self) -> u32 {
         self.window_size
+    }
+
+    fn get_window_type_bits(&self) -> u8 {
+        self.window_type as u8
     }
 }
 
@@ -277,6 +314,8 @@ impl PluginStateImpl for RetainPluginMainThread<'_> {
 
         self.params.set_order(data.get_order() as usize);
         self.params.set_window_size(data.get_window_size() as usize);
+        self.params
+            .set_window_type_from_bits(data.get_window_type_bits());
 
         self.params.push_updates(&self.shared.params);
 
@@ -296,7 +335,7 @@ impl PluginMainThreadParams for RetainPluginMainThread<'_> {
 
         info.set(&ParamInfo {
             id: RetainParamsShared::PARAM_ORDER_ID,
-            flags: ParamInfoFlags::IS_AUTOMATABLE,
+            flags: ParamInfoFlags::IS_AUTOMATABLE | ParamInfoFlags::IS_STEPPED,
             cookie: Cookie::default(),
             name: b"Order",
             module: b"",
@@ -307,7 +346,7 @@ impl PluginMainThreadParams for RetainPluginMainThread<'_> {
 
         info.set(&ParamInfo {
             id: RetainParamsShared::PARAM_WINDOW_SIZE_ID,
-            flags: ParamInfoFlags::IS_AUTOMATABLE,
+            flags: ParamInfoFlags::IS_READONLY,
             cookie: Cookie::default(),
             name: b"Window Size",
             module: b"",
@@ -315,12 +354,26 @@ impl PluginMainThreadParams for RetainPluginMainThread<'_> {
             max_value: usize::MAX as f64,
             default_value: DEFAULT_WINDOW_SIZE.inner() as f64,
         });
+
+        info.set(&ParamInfo {
+            id: RetainParamsShared::PARAM_WINDOW_TYPE_ID,
+            flags: ParamInfoFlags::IS_READONLY,
+            cookie: Cookie::default(),
+            name: b"Window Function",
+            module: b"",
+            min_value: 0.0,
+            max_value: 4.0,
+            default_value: DEFAULT_WINDOW_TYPE.as_bits() as f64,
+        });
     }
 
     fn get_value(&mut self, param_id: ClapId) -> Option<f64> {
         match param_id {
             RetainParamsShared::PARAM_ORDER_ID => Some(self.params.get_order() as f64),
             RetainParamsShared::PARAM_WINDOW_SIZE_ID => Some(self.params.get_window_size() as f64),
+            RetainParamsShared::PARAM_WINDOW_TYPE_ID => {
+                Some(self.params.get_window_type().as_bits() as f64)
+            }
             _ => None,
         }
     }

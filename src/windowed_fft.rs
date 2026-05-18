@@ -5,10 +5,11 @@
 
 use crate::{
     window_function::{
-        BlackmanHarrisWindow, HannWindow, RectangularWindow, Sine4Window, HammingWindow,
+        BlackmanHarrisWindow, HammingWindow, HannWindow, RectangularWindow, Sine4Window,
         WindowFunction,
     },
     window_size::WindowSize,
+    window_type::WindowType,
 };
 use num_complex::Complex;
 use realfft::{ComplexToReal, RealFftPlanner, RealToComplex};
@@ -56,14 +57,21 @@ impl WindowedRealFft {
         }
     }
 
-    pub fn window_function(&mut self, window_function: Box<dyn WindowFunction>) {}
+    pub fn window_function(&mut self, window_type: &WindowType) {
+        self.input.clear();
+        self.output.clear();
+
+        let window_function = window_type.new_function(&WindowSize::from(self.window_size));
+
+        self.window_function = window_function;
+    }
 
     pub fn window_size(&mut self, window_size: WindowSize) {
         if window_size == self.window_size.into() {
             return;
         }
 
-        self.window_function = Box::new(HannWindow::new(&window_size));
+        self.window_function.resize(&window_size);
         self.window_size = window_size.inner();
 
         self.forward = self.planner.plan_fft_forward(self.window_size);

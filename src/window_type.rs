@@ -3,12 +3,13 @@
 
 use crate::{
     window_function::{
-        BlackmanHarrisWindow, HammingWindow, HannWindow, RectangularWindow,
-        Sine4Window, WindowFunction,
+        BlackmanHarrisWindow, HammingWindow, HannWindow, RectangularWindow, Sine4Window,
+        WindowFunction,
     },
     window_size::WindowSize,
 };
 
+#[derive(PartialEq)]
 pub enum WindowType {
     Rectangular,
     Hann,
@@ -18,7 +19,7 @@ pub enum WindowType {
 }
 
 impl WindowType {
-    fn into_function(self, window_size: &WindowSize) -> Box<dyn WindowFunction> {
+    pub fn new_function(&self, window_size: &WindowSize) -> Box<dyn WindowFunction> {
         match self {
             Self::Rectangular => Box::new(RectangularWindow::new(window_size)),
             Self::Hann => Box::new(HannWindow::new(window_size)),
@@ -47,5 +48,26 @@ impl WindowType {
             Self::Sine4,
         ]
         .into_iter()
+    }
+
+    pub fn from_bits(bits: u8) -> Self {
+        match bits {
+            0b00000000 => Self::Rectangular,
+            0b00000001 => Self::Hann,
+            0b00000010 => Self::Hamming,
+            0b00000011 => Self::BlackmanHarris,
+            0b00000100 => Self::Sine4,
+            _ => panic!("Invalid window type"),
+        }
+    }
+
+    pub fn as_bits(&self) -> u8 {
+        match self {
+            Self::Rectangular => 0b00000000,
+            Self::Hann => 0b00000001,
+            Self::Hamming => 0b00000010,
+            Self::BlackmanHarris => 0b00000011,
+            Self::Sine4 => 0b00000100,
+        }
     }
 }

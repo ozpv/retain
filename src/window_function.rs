@@ -11,6 +11,8 @@ pub trait WindowFunction: Send {
     fn reverse(&mut self, data: &mut [f32]);
     /// Yields the amount of samples still required to apply the window
     fn needed(&self) -> usize;
+    /// Take the steps necessary to handle a resize
+    fn resize(&mut self, window_size: &WindowSize);
 }
 
 /// Effectively a chunking function
@@ -29,10 +31,14 @@ impl RectangularWindow {
 impl WindowFunction for RectangularWindow {
     fn apply(&mut self, _data: &mut VecDeque<f32>) {}
 
-    fn reverse(&mut self, _data: &mut [f32]) {}
+    fn reverse(&mut self, data: &mut [f32]) {}
 
     fn needed(&self) -> usize {
         self.window_size
+    }
+
+    fn resize(&mut self, window_size: &WindowSize) {
+        *self = Self::new(&window_size);
     }
 }
 
@@ -152,6 +158,10 @@ impl WindowFunction for HannWindow {
             self.window_size / 2
         }
     }
+
+    fn resize(&mut self, window_size: &WindowSize) {
+        *self = Self::new(&window_size);
+    }
 }
 
 /// Hamming function
@@ -180,8 +190,8 @@ impl HammingWindow {
                 0.53836 - (0.46164 * f32::cos((2.0 * PI * i) / (window_size_f32)))
             })
             .collect::<Vec<f32>>();
-			
-		let normalize = (0..half_window_size)
+
+        let normalize = (0..half_window_size)
             .map(|i| {
                 (function[i] * function[i])
                     + (function[i + half_window_size] * function[i + half_window_size])
@@ -257,6 +267,10 @@ impl WindowFunction for HammingWindow {
         } else {
             self.window_size / 2
         }
+    }
+
+    fn resize(&mut self, window_size: &WindowSize) {
+        *self = Self::new(&window_size);
     }
 }
 
@@ -378,6 +392,10 @@ impl WindowFunction for BlackmanHarrisWindow {
             self.window_size / 4
         }
     }
+
+    fn resize(&mut self, window_size: &WindowSize) {
+        *self = Self::new(&window_size);
+    }
 }
 
 /// 4th power of sine window function
@@ -495,5 +513,9 @@ impl WindowFunction for Sine4Window {
         } else {
             self.window_size / 4
         }
+    }
+
+    fn resize(&mut self, window_size: &WindowSize) {
+        *self = Self::new(&window_size);
     }
 }

@@ -93,6 +93,7 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
         }
 
         let prev_window_size = self.params.get_window_size();
+        let prev_window_type = self.params.get_window_type().as_bits();
 
         // Receive any param updates from the main thread and/or the GUI.
         let has_ui_param_updates = self.params.fetch_updates(&self.shared.params);
@@ -111,6 +112,13 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
                 latency.changed(&mut main);
                 // self.shared.host.request_restart();
             }
+        }
+
+        // update change in window type if needed
+        let window_type = self.params.get_window_type();
+        if prev_window_type != window_type.as_bits() {
+            self.fft_left.window_function(&window_type);
+            self.fft_right.window_function(&window_type);
         }
 
         // Now let's process the audio, while splitting the processing in batches between each

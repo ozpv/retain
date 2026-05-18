@@ -4,13 +4,14 @@ use crate::{
     RetainPluginMainThread, RetainPluginShared,
     params::{RetainParamsLocal, RetainParamsShared},
     window_size::WindowSize,
+    window_type::WindowType,
 };
 use baseview::{Size, WindowHandle, WindowOpenOptions, WindowScalePolicy, gl::GlConfig};
 use clack_extensions::gui::{GuiApiType, GuiConfiguration, GuiSize, PluginGuiImpl, Window};
 use clack_plugin::prelude::*;
 use egui_baseview::{
     EguiWindow, GraphicsConfig, Queue,
-    egui::{self, ComboBox, Context, Slider},
+    egui::{self, Align, ComboBox, Context, Layout, Slider},
 };
 use std::sync::Arc;
 
@@ -64,41 +65,75 @@ impl RetainPluginGui {
                 state.local_params.fetch_updates(&state.shared_params);
 
                 egui::CentralPanel::default().show(egui_ctx, |ui| {
-                    ui.heading("Retain");
-                    let mut order = state.local_params.get_order();
-                    let window_size = state.local_params.get_window_size();
+                    ui.with_layout(Layout::top_down(Align::Center), |ui| {
+                        ui.heading("Retain");
+                    });
 
-                    let slider = ui.add(
-                        Slider::new(&mut order, 0..=window_size)
-                            .text("Order")
-                            .logarithmic(true),
-                    );
+                    ui.horizontal(|ui| {
+                        ui.with_layout(Layout::top_down(Align::LEFT), |ui| {
+                            let mut order = state.local_params.get_order();
+                            let window_size = state.local_params.get_window_size();
 
-                    if slider.changed() {
-                        state.local_params.set_order(order);
-                        state.local_params.push_updates(&state.shared_params);
-                    }
+                            let slider = ui.add(
+                                Slider::new(&mut order, 0..=window_size)
+                                    .text("Order")
+                                    .logarithmic(true),
+                            );
 
-                    state.local_params.has_gesture = slider.is_pointer_button_down_on();
-                    state.local_params.push_gesture(&state.shared_params);
-
-                    let mut window_size = WindowSize::from(state.local_params.get_window_size());
-                    ComboBox::from_label("Window Size")
-                        .selected_text(window_size.as_str())
-                        .show_ui(ui, |ui| {
-                            for size in WindowSize::iter() {
-                                let display = size.as_str();
-                                let inner = size.inner();
-
-                                if ui
-                                    .selectable_value(&mut window_size, size, display)
-                                    .changed()
-                                {
-                                    state.local_params.set_window_size(inner);
-                                    state.local_params.push_updates(&state.shared_params);
-                                }
+                            if slider.changed() {
+                                state.local_params.set_order(order);
+                                state.local_params.push_updates(&state.shared_params);
                             }
+
+                            state.local_params.has_gesture = slider.is_pointer_button_down_on();
+                            state.local_params.push_gesture(&state.shared_params);
+
+                            let mut window_size =
+                                WindowSize::from(state.local_params.get_window_size());
+                            ComboBox::from_label("Window Size")
+                                .selected_text(window_size.as_str())
+                                .show_ui(ui, |ui| {
+                                    for size in WindowSize::iter() {
+                                        let display = size.as_str();
+                                        let inner = size.inner();
+
+                                        if ui
+                                            .selectable_value(&mut window_size, size, display)
+                                            .changed()
+                                        {
+                                            state.local_params.set_window_size(inner);
+                                            state.local_params.push_updates(&state.shared_params);
+                                        }
+                                    }
+                                });
                         });
+
+                        ui.with_layout(Layout::right_to_left(Align::RIGHT), |ui| {
+                            let window_type = state.local_params.get_window_type();
+                            let selected = window_type.as_str();
+                            let mut window_type = window_type.as_bits();
+                            ComboBox::from_label("Window Function")
+                                .selected_text(selected)
+                                .show_ui(ui, |ui| {
+                                    for function in WindowType::iter() {
+                                        let display = function.as_str();
+                                        let bits = function.as_bits();
+
+                                        if ui
+                                            .selectable_value(
+                                                &mut window_type,
+                                                function.as_bits(),
+                                                display,
+                                            )
+                                            .changed()
+                                        {
+                                            state.local_params.set_window_type_from_bits(bits);
+                                            state.local_params.push_updates(&state.shared_params);
+                                        }
+                                    }
+                                });
+                        });
+                    });
                 });
             },
         );
