@@ -1,8 +1,13 @@
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::return_self_not_must_use)]
+#![allow(unused)]
+#![allow(dead_code)]
 
 use crate::{
-    window_function::{BlackmanHarrisWindow, HannWindow, RectangularWindow, WindowFunction},
+    window_function::{
+        BlackmanHarrisWindow, HaemolacriaaWindow, HannWindow, RectangularWindow, Sine4Window,
+        WindowFunction,
+    },
     window_size::WindowSize,
 };
 use num_complex::Complex;
@@ -23,7 +28,7 @@ pub struct WindowedRealFft {
 
 impl WindowedRealFft {
     pub fn new(window_size: WindowSize) -> Self {
-        let window_function = Box::new(BlackmanHarrisWindow::new(&window_size));
+        let window_function = Box::new(HaemolacriaaWindow::new(&window_size));
         let window_size = window_size.inner();
 
         let mut planner = RealFftPlanner::new();
@@ -58,7 +63,7 @@ impl WindowedRealFft {
             return;
         }
 
-        self.window_function = Box::new(HannWindow::new(&window_size));
+        self.window_function = Box::new(HaemolacriaaWindow::new(&window_size));
         self.window_size = window_size.inner();
 
         self.forward = self.planner.plan_fft_forward(self.window_size);
