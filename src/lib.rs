@@ -75,14 +75,14 @@ impl DefaultPluginFactory for RetainPlugin {
 pub struct RetainPluginShared<'a> {
     /// The plugin's parameter values.
     params: Arc<RetainParamsShared>,
-    host: Arc<HostSharedHandle<'a>>,
+    host: HostSharedHandle<'a>,
 }
 
 impl<'a> RetainPluginShared<'a> {
     fn new(host: HostSharedHandle<'a>) -> Self {
         RetainPluginShared {
             params: Arc::new(RetainParamsShared::new()),
-            host: Arc::new(host),
+            host,
         }
     }
 }
@@ -109,7 +109,8 @@ impl<'a> PluginMainThread<'a, RetainPluginShared<'a>> for RetainPluginMainThread
 
 impl PluginLatencyImpl for RetainPluginMainThread<'_> {
     fn get(&mut self) -> u32 {
-        self.shared.params.get_window_size() as u32
+        self.params.fetch_updates(&self.shared.params);
+        self.params.get_window_size() as u32
     }
 }
 

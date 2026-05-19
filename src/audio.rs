@@ -1,10 +1,8 @@
 //! Contains all types and implementations related to audio processing and the audio thread.
 
 use crate::{
-    RetainPluginMainThread, RetainPluginShared,
-    params::{GestureChange, RetainParamsLocal, RetainParamsShared},
-    retain::retain_top_n_magnitudes,
-    windowed_fft::WindowedRealFft,
+    RetainPluginMainThread, RetainPluginShared, params::RetainParamsLocal,
+    retain::retain_top_n_magnitudes, windowed_fft::WindowedRealFft,
 };
 use clack_extensions::{
     audio_ports::{
@@ -13,10 +11,7 @@ use clack_extensions::{
     latency::HostLatency,
     params::PluginAudioProcessorParams,
 };
-use clack_plugin::{
-    events::event_types::{ParamGestureBeginEvent, ParamGestureEndEvent},
-    prelude::*,
-};
+use clack_plugin::prelude::*;
 
 /// Our plugin's audio processor. It lives in the audio thread.
 ///
@@ -93,10 +88,10 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
         }
 
         let prev_window_size = self.params.get_window_size();
-        let prev_window_type = self.params.get_window_type().as_bits();
+        let prev_window_type = self.params.get_window_type().as_byte();
 
         // Receive any param updates from the main thread and/or the GUI.
-        let has_ui_param_updates = self.params.fetch_updates(&self.shared.params);
+        self.params.fetch_updates(&self.shared.params);
 
         // update window size and latency if it has changed
         // updates fft window sizes only if necessary
@@ -116,9 +111,9 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
 
         // update change in window type if needed
         let window_type = self.params.get_window_type();
-        if prev_window_type != window_type.as_bits() {
-            self.fft_left.window_function(&window_type);
-            self.fft_right.window_function(&window_type);
+        if prev_window_type != window_type.as_byte() {
+            self.fft_left.window_function(window_type);
+            self.fft_right.window_function(window_type);
         }
 
         // Now let's process the audio, while splitting the processing in batches between each
@@ -131,16 +126,7 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
 
             // Get the parameters after all changes have been handled.
             let order = self.params.get_order();
-
-            if order == 0 {
-                for channel in channel_buffers.iter_mut().flatten() {
-                    for sample in channel.iter_mut() {
-                        *sample = 0.0;
-                    }
-                }
-
-                continue;
-            }
+            let complement = self.params.get_complement();
 
             // process samples in place here
             if let [Some(left), Some(right)] = &mut channel_buffers {
@@ -148,7 +134,7 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
                     if self.fft_left.push_back_input(*sample) {
                         self.fft_left.forward();
 
-                        retain_top_n_magnitudes(self.fft_left.get_spectrum(), order);
+                        retain_top_n_magnitudes(self.fft_left.get_spectrum(), order, complement);
 
                         self.fft_left.inverse();
                         self.fft_left.clear_input();
@@ -161,7 +147,7 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
                     if self.fft_right.push_back_input(*sample) {
                         self.fft_right.forward();
 
-                        retain_top_n_magnitudes(self.fft_right.get_spectrum(), order);
+                        retain_top_n_magnitudes(self.fft_right.get_spectrum(), order, complement);
 
                         self.fft_right.inverse();
                         self.fft_right.clear_input();
@@ -176,32 +162,6 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
         if self.params.push_updates(&self.shared.params) {
             // Request the on-main-thread callback, which we use to refresh the UI if it is open
             self.host.request_callback();
-        }
-
-        // Fetch the latest gesture status
-        let current_gesture = self
-            .params
-            .fetch_gesture(&self.shared.params, has_ui_param_updates);
-
-        // Send a Gesture Begin event, if we need to do so
-        if let Some(GestureChange::Begin | GestureChange::Both) = current_gesture {
-            let _ = events.output.try_push(ParamGestureBeginEvent::new(
-                0,
-                RetainParamsShared::PARAM_ORDER_ID,
-            ));
-        }
-
-        // If the UI sent us param updates, send them to the Host
-        if has_ui_param_updates {
-            self.params.send_param_events(events.output);
-        }
-
-        // Send a Gesture End event, if we need to do so
-        if let Some(GestureChange::End | GestureChange::Both) = current_gesture {
-            let _ = events.output.try_push(ParamGestureEndEvent::new(
-                audio.frames_count(),
-                RetainParamsShared::PARAM_ORDER_ID,
-            ));
         }
 
         Ok(ProcessStatus::ContinueIfNotQuiet)

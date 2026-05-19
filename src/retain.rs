@@ -2,12 +2,26 @@ use num_complex::Complex;
 use rustc_hash::FxHashSet;
 
 #[inline(always)]
-pub fn retain_top_n_magnitudes(spectrum: &mut [Complex<f32>], n: usize) {
+pub fn retain_top_n_magnitudes(spectrum: &mut [Complex<f32>], n: usize, complement: bool) {
     // you'd be keeping the entire signal
-    // or keeping nothing at all
-    if n >= spectrum.len() {
+    if n >= spectrum.len() && !complement {
         return;
-    } else if n == 0 {
+    }
+
+    if n == 0 && complement {
+        return;
+    }
+
+    // keeping nothing at all
+    if n == 0 && !complement {
+        for phasor in spectrum {
+            *phasor = Complex::ZERO;
+        }
+
+        return;
+    }
+
+    if n >= spectrum.len() && complement {
         for phasor in spectrum {
             *phasor = Complex::ZERO;
         }
@@ -30,7 +44,11 @@ pub fn retain_top_n_magnitudes(spectrum: &mut [Complex<f32>], n: usize) {
         .collect::<FxHashSet<usize>>();
 
     for (i, phasor) in spectrum.iter_mut().enumerate() {
-        if !top_indices.contains(&i) {
+        if top_indices.contains(&i) && complement {
+            *phasor = Complex::ZERO;
+        }
+
+        if !top_indices.contains(&i) && !complement {
             *phasor = Complex::ZERO;
         }
     }

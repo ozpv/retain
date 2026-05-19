@@ -85,11 +85,9 @@ impl RetainPluginGui {
                                 state.local_params.push_updates(&state.shared_params);
                             }
 
-                            state.local_params.has_gesture = slider.is_pointer_button_down_on();
-                            state.local_params.push_gesture(&state.shared_params);
-
                             let mut window_size =
                                 WindowSize::from(state.local_params.get_window_size());
+
                             ComboBox::from_label("Window Size")
                                 .selected_text(window_size.as_str())
                                 .show_ui(ui, |ui| {
@@ -108,26 +106,34 @@ impl RetainPluginGui {
                                 });
                         });
 
-                        ui.with_layout(Layout::right_to_left(Align::RIGHT), |ui| {
+                        ui.with_layout(Layout::top_down(Align::RIGHT), |ui| {
+                            let mut complement = state.local_params.get_complement();
+
+                            if ui.checkbox(&mut complement, "Complement").changed() {
+                                state.local_params.set_complement(complement);
+                                state.local_params.push_updates(&state.shared_params);
+                            }
+
                             let window_type = state.local_params.get_window_type();
                             let selected = window_type.as_str();
-                            let mut window_type = window_type.as_bits();
+                            let mut window_type = window_type.as_byte();
+
                             ComboBox::from_label("Window Function")
                                 .selected_text(selected)
                                 .show_ui(ui, |ui| {
                                     for function in WindowType::iter() {
                                         let display = function.as_str();
-                                        let bits = function.as_bits();
+                                        let bits = function.as_byte();
 
                                         if ui
                                             .selectable_value(
                                                 &mut window_type,
-                                                function.as_bits(),
+                                                function.as_byte(),
                                                 display,
                                             )
                                             .changed()
                                         {
-                                            state.local_params.set_window_type_from_bits(bits);
+                                            state.local_params.set_window_type_from_byte(bits);
                                             state.local_params.push_updates(&state.shared_params);
                                         }
                                     }
@@ -204,6 +210,10 @@ impl PluginGuiImpl for RetainPluginMainThread<'_> {
             width: 600,
             height: 350,
         })
+    }
+
+    fn can_resize(&mut self) -> bool {
+        false
     }
 
     fn set_size(&mut self, _size: GuiSize) -> Result<(), PluginError> {

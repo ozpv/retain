@@ -8,7 +8,7 @@ use clack_extensions::{
     state::PluginStateImpl,
 };
 use clack_plugin::{
-    events::{event_types::ParamValueEvent, spaces::CoreEventSpace},
+    events::spaces::CoreEventSpace,
     prelude::*,
     stream::{InputStream, OutputStream},
     utils::Cookie,
@@ -24,7 +24,8 @@ use std::{
 /// The default value of the order parameter.
 const DEFAULT_ORDER: usize = 1;
 pub const DEFAULT_WINDOW_SIZE: WindowSize = WindowSize::Size4096;
-const DEFAULT_WINDOW_TYPE: WindowType = WindowType::Hann;
+pub const DEFAULT_WINDOW_TYPE: WindowType = WindowType::Hann;
+const DEFAULT_COMPLEMENT: bool = false;
 
 /// A struct that manages the parameters for our plugin.
 ///
@@ -38,8 +39,8 @@ pub struct RetainParamsShared {
     window_size: AtomicUsize,
     /// Type of window function of FFT
     window_type: AtomicU8,
-    /// Whether a gesture is currently active or not on the parameters
-    has_gesture: AtomicBool,
+    /// Whether it retains or removes the highest magnitudes
+    complement: AtomicBool,
 }
 
 impl RetainParamsShared {
@@ -47,31 +48,17 @@ impl RetainParamsShared {
     pub const PARAM_ORDER_ID: ClapId = ClapId::new(1);
     pub const PARAM_WINDOW_SIZE_ID: ClapId = ClapId::new(2);
     pub const PARAM_WINDOW_TYPE_ID: ClapId = ClapId::new(3);
+    pub const PARAM_COMPLEMENT_ID: ClapId = ClapId::new(3);
 
     /// Initializes the shared parameter value.
     pub fn new() -> Self {
         Self {
             order: AtomicUsize::new(DEFAULT_ORDER),
             window_size: AtomicUsize::new(DEFAULT_WINDOW_SIZE.inner()),
-            window_type: AtomicU8::new(DEFAULT_WINDOW_TYPE.as_bits()),
-            has_gesture: AtomicBool::new(false),
+            window_type: AtomicU8::new(DEFAULT_WINDOW_TYPE.as_byte()),
+            complement: AtomicBool::new(DEFAULT_COMPLEMENT),
         }
     }
-
-    pub fn get_window_size(&self) -> usize {
-        self.window_size.load(Ordering::Relaxed)
-    }
-}
-
-/// A param gesture change type
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum GestureChange {
-    /// User started changing a parameter
-    Begin,
-    /// User finished changing a parameter
-    End,
-    /// User both started and finished changing a parameter during the current block
-    Both,
 }
 
 /// The local-side of parameter state.
@@ -88,8 +75,8 @@ pub struct RetainParamsLocal {
     window_size: usize,
     /// The local value of the type of window function parameter.
     window_type: WindowType,
-    /// Whether the user is currently changing the parameter, that we know of
-    pub has_gesture: bool,
+    /// The local value of the complement parameter.
+    complement: bool,
 }
 
 impl RetainParamsLocal {
@@ -98,8 +85,8 @@ impl RetainParamsLocal {
         Self {
             order: shared.order.load(Ordering::Relaxed),
             window_size: shared.window_size.load(Ordering::Relaxed),
-            window_type: WindowType::from_bits(shared.window_type.load(Ordering::Relaxed)),
-            has_gesture: shared.has_gesture.load(Ordering::Relaxed),
+            window_type: WindowType::from_byte(shared.window_type.load(Ordering::Relaxed)),
+            complement: shared.complement.load(Ordering::Relaxed),
         }
     }
 
@@ -137,8 +124,20 @@ impl RetainParamsLocal {
 
     /// Sets the current local window type from `bits`.
     #[inline]
-    pub fn set_window_type_from_bits(&mut self, bits: u8) {
-        self.window_type = WindowType::from_bits(bits);
+    pub fn set_window_type_from_byte(&mut self, bits: u8) {
+        self.window_type = WindowType::from_byte(bits);
+    }
+
+    /// Returns the current local complement.
+    #[inline]
+    pub fn get_complement(&self) -> bool {
+        self.complement
+    }
+
+    /// Sets the current local complement to `value`.
+    #[inline]
+    pub fn set_complement(&mut self, value: bool) {
+        self.complement = value;
     }
 
     /// Fetch updates from the `shared` state.
@@ -148,15 +147,18 @@ impl RetainParamsLocal {
     pub fn fetch_updates(&mut self, shared: &RetainParamsShared) -> bool {
         let latest_order = shared.order.load(Ordering::Relaxed);
         let latest_window_size = shared.window_size.load(Ordering::Relaxed);
-        let latest_window_type = WindowType::from_bits(shared.window_type.load(Ordering::Relaxed));
+        let latest_window_type = WindowType::from_byte(shared.window_type.load(Ordering::Relaxed));
+        let latest_complement = shared.complement.load(Ordering::Relaxed);
 
         if latest_order != self.order
             || latest_window_size != self.order
             || latest_window_type != self.window_type
+            || latest_complement != self.complement
         {
             self.order = latest_order;
             self.window_size = latest_window_size;
             self.window_type = latest_window_type;
+            self.complement = latest_complement;
 
             true
         } else {
@@ -173,48 +175,13 @@ impl RetainParamsLocal {
         let previous_window_size = shared.window_size.swap(self.window_size, Ordering::Relaxed);
         let previous_window_type = shared
             .window_type
-            .swap(self.window_type.as_bits(), Ordering::Relaxed);
+            .swap(self.window_type.as_byte(), Ordering::Relaxed);
+        let previous_complement = shared.complement.swap(self.complement, Ordering::Relaxed);
 
         previous_order != self.order
             || previous_window_size != self.window_size
-            || previous_window_type != self.window_type.as_bits()
-    }
-
-    /// Pushes the local gesture state to the `shared` state.
-    #[inline]
-    pub fn push_gesture(&self, shared: &RetainParamsShared) {
-        shared
-            .has_gesture
-            .store(self.has_gesture, Ordering::Relaxed);
-    }
-
-    /// Fetches updates to the gesture state.
-    ///
-    /// If a gesture state changed occurred, it is returned.
-    /// If the gesture did not change from the last update, `None` is returned.
-    #[inline]
-    pub fn fetch_gesture(
-        &mut self,
-        shared: &RetainParamsShared,
-        has_ui_param_updates: bool,
-    ) -> Option<GestureChange> {
-        let previous_gesture = self.has_gesture;
-
-        self.has_gesture = shared.has_gesture.load(Ordering::Relaxed);
-
-        if previous_gesture == self.has_gesture {
-            return if has_ui_param_updates && !self.has_gesture {
-                Some(GestureChange::Both)
-            } else {
-                None
-            };
-        }
-
-        if previous_gesture {
-            Some(GestureChange::End)
-        } else {
-            Some(GestureChange::Begin)
-        }
+            || previous_window_type != self.window_type.as_byte()
+            || previous_complement != self.complement
     }
 
     /// Handles incoming events.
@@ -230,30 +197,15 @@ impl RetainParamsLocal {
             if event.param_id() == RetainParamsShared::PARAM_WINDOW_SIZE_ID {
                 self.set_window_size(event.value() as usize);
             }
+
+            if event.param_id() == RetainParamsShared::PARAM_WINDOW_TYPE_ID {
+                self.set_window_type_from_byte(event.value() as u8);
+            }
+
+            if event.param_id() == RetainParamsShared::PARAM_COMPLEMENT_ID {
+                self.set_complement(event.value() != 0.0);
+            }
         }
-    }
-
-    /// Sends the value of the parameters to the host, via a [`ParamValueEvent`].
-    pub fn send_param_events(&self, output_events: &mut OutputEvents) {
-        let order_event = ParamValueEvent::new(
-            0,
-            RetainParamsShared::PARAM_ORDER_ID,
-            Pckn::match_all(),
-            self.order as f64,
-            Cookie::empty(),
-        );
-
-        let _ = output_events.try_push(order_event);
-
-        let window_size_event = ParamValueEvent::new(
-            0,
-            RetainParamsShared::PARAM_ORDER_ID,
-            Pckn::match_all(),
-            self.window_size as f64,
-            Cookie::empty(),
-        );
-
-        let _ = output_events.try_push(window_size_event);
     }
 }
 
@@ -266,6 +218,8 @@ struct PluginState {
     window_size: u32,
     #[prost(uint32, tag = "3")]
     window_type: u32,
+    #[prost(bool, tag = "4")]
+    complement: bool,
 }
 
 impl PluginState {
@@ -273,7 +227,8 @@ impl PluginState {
         Self {
             order: local_params.get_order() as u64,
             window_size: local_params.get_window_size() as u32,
-            window_type: local_params.get_window_type().as_bits() as u32,
+            window_type: local_params.get_window_type().as_byte() as u32,
+            complement: local_params.get_complement(),
         }
     }
 
@@ -287,6 +242,10 @@ impl PluginState {
 
     fn get_window_type_bits(&self) -> u8 {
         self.window_type as u8
+    }
+
+    fn get_complement(&self) -> bool {
+        self.complement
     }
 }
 
@@ -315,7 +274,8 @@ impl PluginStateImpl for RetainPluginMainThread<'_> {
         self.params.set_order(data.get_order() as usize);
         self.params.set_window_size(data.get_window_size() as usize);
         self.params
-            .set_window_type_from_bits(data.get_window_type_bits());
+            .set_window_type_from_byte(data.get_window_type_bits());
+        self.params.set_complement(data.get_complement());
 
         self.params.push_updates(&self.shared.params);
 
@@ -325,7 +285,7 @@ impl PluginStateImpl for RetainPluginMainThread<'_> {
 
 impl PluginMainThreadParams for RetainPluginMainThread<'_> {
     fn count(&mut self) -> u32 {
-        2
+        4
     }
 
     fn get_info(&mut self, param_index: u32, info: &mut ParamInfoWriter) {
@@ -363,7 +323,18 @@ impl PluginMainThreadParams for RetainPluginMainThread<'_> {
             module: b"",
             min_value: 0.0,
             max_value: 4.0,
-            default_value: DEFAULT_WINDOW_TYPE.as_bits() as f64,
+            default_value: DEFAULT_WINDOW_TYPE.as_byte() as f64,
+        });
+
+        info.set(&ParamInfo {
+            id: RetainParamsShared::PARAM_COMPLEMENT_ID,
+            flags: ParamInfoFlags::IS_READONLY,
+            cookie: Cookie::default(),
+            name: b"Complement",
+            module: b"",
+            min_value: 0.0,
+            max_value: 1.0,
+            default_value: DEFAULT_COMPLEMENT as u8 as f64,
         });
     }
 
@@ -372,28 +343,33 @@ impl PluginMainThreadParams for RetainPluginMainThread<'_> {
             RetainParamsShared::PARAM_ORDER_ID => Some(self.params.get_order() as f64),
             RetainParamsShared::PARAM_WINDOW_SIZE_ID => Some(self.params.get_window_size() as f64),
             RetainParamsShared::PARAM_WINDOW_TYPE_ID => {
-                Some(self.params.get_window_type().as_bits() as f64)
+                Some(self.params.get_window_type().as_byte() as f64)
+            }
+            RetainParamsShared::PARAM_COMPLEMENT_ID => {
+                Some(self.params.get_complement() as u8 as f64)
             }
             _ => None,
         }
     }
 
+    // TODO: update for order
     fn value_to_text(
         &mut self,
         param_id: ClapId,
         value: f64,
         writer: &mut ParamDisplayWriter,
     ) -> std::fmt::Result {
-        if param_id == 1 {
+        if param_id == RetainParamsShared::PARAM_ORDER_ID {
             write!(writer, "{0:.2} %", value * 100.0)
         } else {
             Err(std::fmt::Error)
         }
     }
 
+    // TODO: update for order
     fn text_to_value(&mut self, param_id: ClapId, text: &CStr) -> Option<f64> {
         let text = text.to_str().ok()?;
-        if param_id == 1 {
+        if param_id == RetainParamsShared::PARAM_ORDER_ID {
             let text = text.strip_suffix('%').unwrap_or(text).trim();
             let percentage: f64 = text.parse().ok()?;
 

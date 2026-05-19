@@ -1,6 +1,3 @@
-#![allow(unused)]
-#![allow(dead_code)]
-
 use crate::{
     window_function::{
         BlackmanHarrisWindow, HammingWindow, HannWindow, RectangularWindow, Sine4Window,
@@ -50,24 +47,24 @@ impl WindowType {
         .into_iter()
     }
 
-    pub fn from_bits(bits: u8) -> Self {
+    pub fn from_byte(bits: u8) -> Self {
         match bits {
-            0b00000000 => Self::Rectangular,
-            0b00000001 => Self::Hann,
-            0b00000010 => Self::Hamming,
-            0b00000011 => Self::BlackmanHarris,
-            0b00000100 => Self::Sine4,
+            0 => Self::Rectangular,
+            1 => Self::Hann,
+            2 => Self::Hamming,
+            3 => Self::BlackmanHarris,
+            4 => Self::Sine4,
             _ => panic!("Invalid window type"),
         }
     }
 
-    pub fn as_bits(&self) -> u8 {
+    pub fn as_byte(&self) -> u8 {
         match self {
-            Self::Rectangular => 0b00000000,
-            Self::Hann => 0b00000001,
-            Self::Hamming => 0b00000010,
-            Self::BlackmanHarris => 0b00000011,
-            Self::Sine4 => 0b00000100,
+            Self::Rectangular => 0,
+            Self::Hann => 1,
+            Self::Hamming => 2,
+            Self::BlackmanHarris => 3,
+            Self::Sine4 => 4,
         }
     }
 }

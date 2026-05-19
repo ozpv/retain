@@ -1,14 +1,8 @@
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::return_self_not_must_use)]
-#![allow(unused)]
-#![allow(dead_code)]
 
 use crate::{
-    window_function::{
-        BlackmanHarrisWindow, HammingWindow, HannWindow, RectangularWindow, Sine4Window,
-        WindowFunction,
-    },
-    window_size::WindowSize,
+    params::DEFAULT_WINDOW_TYPE, window_function::WindowFunction, window_size::WindowSize,
     window_type::WindowType,
 };
 use num_complex::Complex;
@@ -20,16 +14,16 @@ pub struct WindowedRealFft {
     planner: RealFftPlanner<f32>,
     forward: Arc<dyn RealToComplex<f32>>,
     inverse: Arc<dyn ComplexToReal<f32>>,
+    scratch: Vec<Complex<f32>>,
     window_function: Box<dyn WindowFunction>,
     input: VecDeque<f32>,
     output: VecDeque<f32>,
     spectrum: Vec<Complex<f32>>,
-    scratch: Vec<Complex<f32>>,
 }
 
 impl WindowedRealFft {
     pub fn new(window_size: WindowSize) -> Self {
-        let window_function = Box::new(HannWindow::new(&window_size));
+        let window_function = DEFAULT_WINDOW_TYPE.new_function(&window_size);
         let window_size = window_size.inner();
 
         let mut planner = RealFftPlanner::new();
@@ -49,11 +43,11 @@ impl WindowedRealFft {
             planner,
             forward,
             inverse,
+            scratch,
             window_function,
             input,
             output,
             spectrum,
-            scratch,
         }
     }
 

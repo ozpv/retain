@@ -1,6 +1,3 @@
-#![allow(unused)]
-#![allow(dead_code)]
-
 use crate::window_size::WindowSize;
 use std::{collections::VecDeque, f32::consts::PI};
 
@@ -31,14 +28,14 @@ impl RectangularWindow {
 impl WindowFunction for RectangularWindow {
     fn apply(&mut self, _data: &mut VecDeque<f32>) {}
 
-    fn reverse(&mut self, data: &mut [f32]) {}
+    fn reverse(&mut self, _data: &mut [f32]) {}
 
     fn needed(&self) -> usize {
         self.window_size
     }
 
     fn resize(&mut self, window_size: &WindowSize) {
-        *self = Self::new(&window_size);
+        *self = Self::new(window_size);
     }
 }
 
@@ -160,7 +157,7 @@ impl WindowFunction for HannWindow {
     }
 
     fn resize(&mut self, window_size: &WindowSize) {
-        *self = Self::new(&window_size);
+        *self = Self::new(window_size);
     }
 }
 
@@ -270,7 +267,7 @@ impl WindowFunction for HammingWindow {
     }
 
     fn resize(&mut self, window_size: &WindowSize) {
-        *self = Self::new(&window_size);
+        *self = Self::new(window_size);
     }
 }
 
@@ -394,7 +391,7 @@ impl WindowFunction for BlackmanHarrisWindow {
     }
 
     fn resize(&mut self, window_size: &WindowSize) {
-        *self = Self::new(&window_size);
+        *self = Self::new(window_size);
     }
 }
 
@@ -516,6 +513,6 @@ impl WindowFunction for Sine4Window {
     }
 
     fn resize(&mut self, window_size: &WindowSize) {
-        *self = Self::new(&window_size);
+        *self = Self::new(window_size);
     }
 }
