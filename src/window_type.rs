@@ -6,7 +6,7 @@ use crate::{
     window_size::WindowSize,
 };
 
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum WindowType {
     Rectangular,
     Hann,
@@ -47,17 +47,6 @@ impl WindowType {
         .into_iter()
     }
 
-    pub fn from_byte(bits: u8) -> Self {
-        match bits {
-            0 => Self::Rectangular,
-            1 => Self::Hann,
-            2 => Self::Hamming,
-            3 => Self::BlackmanHarris,
-            4 => Self::Sine4,
-            _ => panic!("Invalid window type"),
-        }
-    }
-
     pub fn as_byte(&self) -> u8 {
         match self {
             Self::Rectangular => 0,
@@ -65,6 +54,19 @@ impl WindowType {
             Self::Hamming => 2,
             Self::BlackmanHarris => 3,
             Self::Sine4 => 4,
+        }
+    }
+}
+
+impl From<u8> for WindowType {
+    fn from(item: u8) -> Self {
+        match item {
+            0 => Self::Rectangular,
+            1 => Self::Hann,
+            2 => Self::Hamming,
+            3 => Self::BlackmanHarris,
+            4 => Self::Sine4,
+            _ => panic!("Invalid window type"),
         }
     }
 }

@@ -1,8 +1,7 @@
-//! Contains all types and implementations related to audio processing and the audio thread.
-
 use crate::{
-    RetainPluginMainThread, RetainPluginShared, params::RetainParamsLocal,
-    retain::retain_top_n_magnitudes, windowed_fft::WindowedRealFft,
+    RetainPluginMainThread, RetainPluginShared, params::RetainParams,
+    retain::retain_top_n_magnitudes, window_size::WindowSize, window_type::WindowType,
+    windowed_fft::WindowedRealFft,
 };
 use clack_extensions::{
     audio_ports::{
@@ -12,6 +11,7 @@ use clack_extensions::{
     params::PluginAudioProcessorParams,
 };
 use clack_plugin::prelude::*;
+use std::sync::Arc;
 
 /// Our plugin's audio processor. It lives in the audio thread.
 ///
@@ -19,7 +19,7 @@ use clack_plugin::prelude::*;
 /// buffer.
 pub struct RetainPluginAudioProcessor<'a> {
     /// The local state of the parameters
-    params: RetainParamsLocal,
+    params: Arc<RetainParams>,
     /// A reference to the plugin's shared data.
     shared: &'a RetainPluginShared<'a>,
     /// Our handle to the host
@@ -28,6 +28,10 @@ pub struct RetainPluginAudioProcessor<'a> {
     fft_left: WindowedRealFft,
     /// Fft for the right channel
     fft_right: WindowedRealFft,
+    /// Previous window type
+    prev_window_type: Option<WindowType>,
+    /// Previous window size
+    prev_window_size: Option<WindowSize>,
 }
 
 impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread<'a>>
@@ -39,7 +43,7 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
         shared: &'a RetainPluginShared<'a>,
         _audio_config: PluginAudioConfiguration,
     ) -> Result<Self, PluginError> {
-        let params = RetainParamsLocal::new(&shared.params);
+        let params = Arc::clone(&shared.params);
 
         let fft_left = WindowedRealFft::new(params.get_window_size().into());
         let fft_right = WindowedRealFft::new(params.get_window_size().into());
@@ -51,6 +55,8 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
             host,
             fft_left,
             fft_right,
+            prev_window_size: None,
+            prev_window_type: None,
         })
     }
 
@@ -87,18 +93,12 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
             }
         }
 
-        let prev_window_size = self.params.get_window_size();
-        let prev_window_type = self.params.get_window_type().as_byte();
-
-        // Receive any param updates from the main thread and/or the GUI.
-        self.params.fetch_updates(&self.shared.params);
-
         // update window size and latency if it has changed
         // updates fft window sizes only if necessary
         let window_size = self.params.get_window_size();
-        if prev_window_size != window_size {
-            self.fft_left.window_size(window_size.into());
-            self.fft_right.window_size(window_size.into());
+        if self.prev_window_size != Some(window_size.clone()) {
+            self.fft_left.window_size(window_size.clone());
+            self.fft_right.window_size(window_size.clone());
 
             if let Some(latency) = self.shared.host.get_extension::<HostLatency>() {
                 // should be safe
@@ -111,9 +111,9 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
 
         // update change in window type if needed
         let window_type = self.params.get_window_type();
-        if prev_window_type != window_type.as_byte() {
-            self.fft_left.window_function(window_type);
-            self.fft_right.window_function(window_type);
+        if self.prev_window_type != Some(window_type.clone()) {
+            self.fft_left.window_function(&window_type);
+            self.fft_right.window_function(&window_type);
         }
 
         // Now let's process the audio, while splitting the processing in batches between each
@@ -158,11 +158,12 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
             }
         }
 
+        self.prev_window_size = Some(window_size);
+        self.prev_window_type = Some(window_type);
+
         // Publish any parameter changes we may have received back to the GUI.
-        if self.params.push_updates(&self.shared.params) {
-            // Request the on-main-thread callback, which we use to refresh the UI if it is open
-            self.host.request_callback();
-        }
+        // Request the on-main-thread callback, which we use to refresh the UI if it is open
+        self.host.request_callback();
 
         Ok(ProcessStatus::ContinueIfNotQuiet)
     }

@@ -1,8 +1,4 @@
-use crate::{
-    audio::RetainPluginAudioProcessor,
-    gui::RetainPluginGui,
-    params::{RetainParamsLocal, RetainParamsShared},
-};
+use crate::{audio::RetainPluginAudioProcessor, gui::RetainPluginGui, params::RetainParams};
 use clack_extensions::{
     audio_ports::PluginAudioPorts,
     gui::PluginGui,
@@ -52,6 +48,8 @@ impl DefaultPluginFactory for RetainPlugin {
     fn get_descriptor() -> PluginDescriptor {
         PluginDescriptor::new("com.haemolacriaa.retain", "Retain")
             .with_description("Retains only the nth largest magnitude frequencies in the signal")
+            .with_version("0.1.0")
+            .with_vendor("haemolacriaa")
             .with_features([AUDIO_EFFECT, STEREO])
     }
 
@@ -63,25 +61,21 @@ impl DefaultPluginFactory for RetainPlugin {
         _host: HostMainThreadHandle<'a>,
         shared: &'a Self::Shared<'a>,
     ) -> Result<Self::MainThread<'a>, PluginError> {
-        Ok(Self::MainThread {
-            shared,
-            params: RetainParamsLocal::new(&shared.params),
-            gui: None,
-        })
+        Ok(Self::MainThread { shared, gui: None })
     }
 }
 
 /// The plugin data that gets shared between the Main Thread and the Audio Thread.
 pub struct RetainPluginShared<'a> {
     /// The plugin's parameter values.
-    params: Arc<RetainParamsShared>,
+    params: Arc<RetainParams>,
     host: HostSharedHandle<'a>,
 }
 
 impl<'a> RetainPluginShared<'a> {
     fn new(host: HostSharedHandle<'a>) -> Self {
         RetainPluginShared {
-            params: Arc::new(RetainParamsShared::new()),
+            params: Arc::new(RetainParams::new()),
             host,
         }
     }
@@ -91,8 +85,6 @@ impl<'a> PluginShared<'a> for RetainPluginShared<'a> {}
 
 /// The data that belongs to the main thread of our plugin.
 pub struct RetainPluginMainThread<'a> {
-    /// The local state of the parameters
-    params: RetainParamsLocal,
     /// A reference to the plugin's shared data.
     shared: &'a RetainPluginShared<'a>,
     /// The plugin's GUI state and context
@@ -109,8 +101,7 @@ impl<'a> PluginMainThread<'a, RetainPluginShared<'a>> for RetainPluginMainThread
 
 impl PluginLatencyImpl for RetainPluginMainThread<'_> {
     fn get(&mut self) -> u32 {
-        self.params.fetch_updates(&self.shared.params);
-        self.params.get_window_size() as u32
+        self.shared.params.get_window_size().inner() as u32
     }
 }
 

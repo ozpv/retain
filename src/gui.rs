@@ -1,9 +1,7 @@
 //! Contains all types and implementations related to the plugin's GUI
 
 use crate::{
-    RetainPluginMainThread, RetainPluginShared,
-    params::{RetainParamsLocal, RetainParamsShared},
-    window_size::WindowSize,
+    RetainPluginMainThread, RetainPluginShared, params::RetainParams, window_size::WindowSize,
     window_type::WindowType,
 };
 use baseview::{Size, WindowHandle, WindowOpenOptions, WindowScalePolicy, gl::GlConfig};
@@ -18,17 +16,14 @@ use std::sync::Arc;
 /// The EGUI application state
 struct AppState {
     /// A handle to the shared params state
-    shared_params: Arc<RetainParamsShared>,
-    /// The local state of the parameters
-    local_params: RetainParamsLocal,
+    params: Arc<RetainParams>,
 }
 
 impl AppState {
     /// Initializes a new [`AppState`] from the given shared params state handle
-    pub fn new(shared_params: &Arc<RetainParamsShared>) -> Self {
+    pub fn new(params: &Arc<RetainParams>) -> Self {
         Self {
-            local_params: RetainParamsLocal::new(shared_params),
-            shared_params: Arc::clone(shared_params),
+            params: Arc::clone(params),
         }
     }
 }
@@ -62,8 +57,6 @@ impl RetainPluginGui {
                 tx.send(egui_ctx.clone()).unwrap();
             },
             |egui_ctx: &Context, _queue: &mut Queue, state: &mut AppState| {
-                state.local_params.fetch_updates(&state.shared_params);
-
                 egui::CentralPanel::default().show(egui_ctx, |ui| {
                     ui.with_layout(Layout::top_down(Align::Center), |ui| {
                         ui.heading("Retain");
@@ -71,8 +64,8 @@ impl RetainPluginGui {
 
                     ui.horizontal(|ui| {
                         ui.with_layout(Layout::top_down(Align::LEFT), |ui| {
-                            let mut order = state.local_params.get_order();
-                            let window_size = state.local_params.get_window_size();
+                            let mut order = state.params.get_order();
+                            let window_size = state.params.get_window_size().inner();
 
                             let slider = ui.add(
                                 Slider::new(&mut order, 0..=window_size)
@@ -81,12 +74,10 @@ impl RetainPluginGui {
                             );
 
                             if slider.changed() {
-                                state.local_params.set_order(order);
-                                state.local_params.push_updates(&state.shared_params);
+                                state.params.set_order(order);
                             }
 
-                            let mut window_size =
-                                WindowSize::from(state.local_params.get_window_size());
+                            let mut window_size = state.params.get_window_size();
 
                             ComboBox::from_label("Window Size")
                                 .selected_text(window_size.as_str())
@@ -99,22 +90,20 @@ impl RetainPluginGui {
                                             .selectable_value(&mut window_size, size, display)
                                             .changed()
                                         {
-                                            state.local_params.set_window_size(inner);
-                                            state.local_params.push_updates(&state.shared_params);
+                                            state.params.set_window_size(inner.into());
                                         }
                                     }
                                 });
                         });
 
                         ui.with_layout(Layout::top_down(Align::RIGHT), |ui| {
-                            let mut complement = state.local_params.get_complement();
+                            let mut complement = state.params.get_complement();
 
                             if ui.checkbox(&mut complement, "Complement").changed() {
-                                state.local_params.set_complement(complement);
-                                state.local_params.push_updates(&state.shared_params);
+                                state.params.set_complement(complement);
                             }
 
-                            let window_type = state.local_params.get_window_type();
+                            let window_type = state.params.get_window_type();
                             let selected = window_type.as_str();
                             let mut window_type = window_type.as_byte();
 
@@ -123,7 +112,7 @@ impl RetainPluginGui {
                                 .show_ui(ui, |ui| {
                                     for function in WindowType::iter() {
                                         let display = function.as_str();
-                                        let bits = function.as_byte();
+                                        let byte = function.as_byte();
 
                                         if ui
                                             .selectable_value(
@@ -133,8 +122,7 @@ impl RetainPluginGui {
                                             )
                                             .changed()
                                         {
-                                            state.local_params.set_window_type_from_byte(bits);
-                                            state.local_params.push_updates(&state.shared_params);
+                                            state.params.set_window_type(byte.into());
                                         }
                                     }
                                 });
