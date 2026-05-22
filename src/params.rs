@@ -11,13 +11,13 @@ use clack_plugin::{
     stream::{InputStream, OutputStream},
     utils::Cookie,
 };
-use prost::Message;
 use std::{
     ffi::CStr,
     fmt::Write as _,
     io::{Read, Write as _},
     sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
 };
+use serde::{Deserialize, Serialize};
 
 /// The default values of the parameters.
 const DEFAULT_ORDER: usize = 1;
@@ -120,38 +120,46 @@ impl RetainParams {
 
 /// Wrapper that helps save plugin parameters using protocol buffers
 /// Updating this will change the schema and break old
-#[derive(Message)]
+#[derive(Serialize, Deserialize)]
+#[serde(default)]
 struct PluginState {
-    #[prost(uint64, tag = "1")]
-    order: u64,
-    #[prost(uint32, tag = "2")]
-    window_size: u32,
-    #[prost(uint32, tag = "3")]
-    window_type: u32,
-    #[prost(bool, tag = "4")]
+    order: usize,
+    window_size: usize,
+    window_type: u8,
     complement: bool,
 }
 
+impl Default for PluginState {
+	fn default() -> Self {
+		Self {
+			order: DEFAULT_ORDER,
+			window_size: DEFAULT_WINDOW_SIZE.inner(),
+			window_type: DEFAULT_WINDOW_TYPE.as_byte(),
+			complement: DEFAULT_COMPLEMENT,
+		}
+	}
+}
+
 impl PluginState {
-    fn copied(local_params: &RetainParams) -> Self {
+    fn copied(params: &RetainParams) -> Self {
         Self {
-            order: local_params.get_order() as u64,
-            window_size: local_params.get_window_size().inner() as u32,
-            window_type: local_params.get_window_type().as_byte() as u32,
-            complement: local_params.get_complement(),
+            order: params.get_order(),
+            window_size: params.get_window_size().inner(),
+            window_type: params.get_window_type().as_byte(),
+            complement: params.get_complement(),
         }
     }
 
-    fn get_order(&self) -> u64 {
+    fn get_order(&self) -> usize {
         self.order
     }
 
-    fn get_window_size(&self) -> u32 {
-        self.window_size
+    fn get_window_size(&self) -> WindowSize {
+        self.window_size.into()
     }
 
-    fn get_window_type_bits(&self) -> u8 {
-        self.window_type as u8
+    fn get_window_type(&self) -> WindowType {
+        self.window_type.into()
     }
 
     fn get_complement(&self) -> bool {
@@ -162,11 +170,9 @@ impl PluginState {
 /// To save and load the plugin parameters
 impl PluginStateImpl for RetainPluginMainThread<'_> {
     fn save(&mut self, output: &mut OutputStream) -> Result<(), PluginError> {
-        let mut data = vec![];
-
         let state = PluginState::copied(&self.shared.params);
 
-        state.encode(&mut data)?;
+        let data = serde_json::to_vec(&state)?;
 
         output.write_all(&data)?;
 
@@ -177,15 +183,15 @@ impl PluginStateImpl for RetainPluginMainThread<'_> {
         let mut data = vec![];
         input.read_to_end(&mut data)?;
 
-        let data = PluginState::decode(&data[..])?;
+        let data = serde_json::from_slice::<PluginState>(&data)?;
 
-        self.shared.params.set_order(data.get_order() as usize);
+        self.shared.params.set_order(data.get_order());
         self.shared
             .params
-            .set_window_size((data.get_window_size() as usize).into());
+            .set_window_size(data.get_window_size());
         self.shared
             .params
-            .set_window_type(data.get_window_type_bits().into());
+            .set_window_type(data.get_window_type());
         self.shared.params.set_complement(data.get_complement());
 
         Ok(())
