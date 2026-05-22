@@ -45,8 +45,8 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
     ) -> Result<Self, PluginError> {
         let params = Arc::clone(&shared.params);
 
-        let fft_left = WindowedRealFft::new(params.get_window_size().into());
-        let fft_right = WindowedRealFft::new(params.get_window_size().into());
+        let fft_left = WindowedRealFft::new(params.get_window_size());
+        let fft_right = WindowedRealFft::new(params.get_window_size());
 
         // This is where we would allocate intermediate buffers and such if we needed them.
         Ok(Self {
@@ -66,8 +66,7 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
         mut audio: Audio,
         events: Events,
     ) -> Result<ProcessStatus, PluginError> {
-        // First, we have to make a few sanity checks.
-        // We want at least a single input/output port pair, which contains channels of `f32`
+        // Ensure at least a single input/output port pair, which contains channels of `f32`
         // audio sample data.
         let mut port_pair = audio
             .port_pair(0)
@@ -78,11 +77,11 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
             .into_f32()
             .ok_or(PluginError::Message("Expected f32 input/output"))?;
 
-        let mut channel_buffers = [None, None];
-
         // Extract the buffer slices that we need, while making sure they are paired correctly and
         // check for either in-place or separate buffers.
-        for (pair, buf) in output_channels.iter_mut().zip(&mut channel_buffers) {
+        let mut output_buffers = [None, None];
+
+        for (pair, buf) in output_channels.iter_mut().zip(&mut output_buffers) {
             *buf = match pair {
                 ChannelPair::InputOnly(_) | ChannelPair::OutputOnly(_) => None,
                 ChannelPair::InPlace(b) => Some(b),
@@ -101,12 +100,16 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
             self.fft_right.window_size(window_size.clone());
 
             if let Some(latency) = self.shared.host.get_extension::<HostLatency>() {
-                // should be safe
+                // SAFETY: should be safe as self.shared.host is a shared
+                // version of the main thread handle
+                // no reason to propagate it through all these layers
                 let mut main = unsafe { self.shared.host.as_main_thread_unchecked() };
 
                 latency.changed(&mut main);
                 // self.shared.host.request_restart();
             }
+
+            self.prev_window_size = Some(window_size);
         }
 
         // update change in window type if needed
@@ -114,23 +117,26 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
         if self.prev_window_type != Some(window_type.clone()) {
             self.fft_left.window_function(&window_type);
             self.fft_right.window_function(&window_type);
+            self.prev_window_type = Some(window_type);
         }
 
-        // Now let's process the audio, while splitting the processing in batches between each
-        // sample-accurate event.
+        // process the audio
         for event_batch in events.input.batch() {
-            // Process all param events in this batch
             for event in event_batch.events() {
                 self.params.handle_event(event);
             }
 
             // Get the parameters after all changes have been handled.
             let order = self.params.get_order();
+
+            // this parameter is read-only and can only be changed in the UI
             let complement = self.params.get_complement();
 
             // process samples in place here
-            if let [Some(left), Some(right)] = &mut channel_buffers {
-                for sample in left.iter_mut() {
+            if let [Some(left), Some(right)] = &mut output_buffers {
+                let range = event_batch.sample_bounds();
+
+                for sample in &mut left[range] {
                     if self.fft_left.push_back_input(*sample) {
                         self.fft_left.forward();
 
@@ -143,7 +149,7 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
                     *sample = self.fft_left.pop_front_output();
                 }
 
-                for sample in right.iter_mut() {
+                for sample in &mut right[range] {
                     if self.fft_right.push_back_input(*sample) {
                         self.fft_right.forward();
 
@@ -157,9 +163,6 @@ impl<'a> PluginAudioProcessor<'a, RetainPluginShared<'a>, RetainPluginMainThread
                 }
             }
         }
-
-        self.prev_window_size = Some(window_size);
-        self.prev_window_type = Some(window_type);
 
         // Publish any parameter changes we may have received back to the GUI.
         // Request the on-main-thread callback, which we use to refresh the UI if it is open

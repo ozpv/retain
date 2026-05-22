@@ -110,22 +110,10 @@ impl RetainParams {
     /// If the given event is a matching parameter change event, the order parameter will be
     /// updated accordingly.
     pub fn handle_event(&self, event: &UnknownEvent) {
-        if let Some(CoreEventSpace::ParamValue(event)) = event.as_core_event() {
-            if event.param_id() == RetainParams::PARAM_ORDER_ID {
-                self.set_order(event.value() as usize);
-            }
-
-            if event.param_id() == RetainParams::PARAM_WINDOW_SIZE_ID {
-                self.set_window_size((event.value() as usize).into());
-            }
-
-            if event.param_id() == RetainParams::PARAM_WINDOW_TYPE_ID {
-                self.set_window_type((event.value() as u8).into());
-            }
-
-            if event.param_id() == RetainParams::PARAM_COMPLEMENT_ID {
-                self.set_complement(event.value() != 0.0);
-            }
+        if let Some(CoreEventSpace::ParamValue(event)) = event.as_core_event()
+            && event.param_id() == RetainParams::PARAM_ORDER_ID
+        {
+            self.set_order(event.value() as usize);
         }
     }
 }

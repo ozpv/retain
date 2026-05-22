@@ -1,4 +1,8 @@
-use crate::{audio::RetainPluginAudioProcessor, gui::RetainPluginGui, params::RetainParams};
+use crate::{
+    audio::RetainPluginAudioProcessor,
+    gui::{AtomicVec2, RetainPluginGui},
+    params::RetainParams,
+};
 use clack_extensions::{
     audio_ports::PluginAudioPorts,
     gui::PluginGui,
@@ -69,6 +73,7 @@ impl DefaultPluginFactory for RetainPlugin {
 pub struct RetainPluginShared<'a> {
     /// The plugin's parameter values.
     params: Arc<RetainParams>,
+    gui_size: Arc<AtomicVec2>,
     host: HostSharedHandle<'a>,
 }
 
@@ -76,6 +81,7 @@ impl<'a> RetainPluginShared<'a> {
     fn new(host: HostSharedHandle<'a>) -> Self {
         RetainPluginShared {
             params: Arc::new(RetainParams::new()),
+            gui_size: Arc::new(AtomicVec2::new()),
             host,
         }
     }
