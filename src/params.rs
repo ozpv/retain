@@ -11,13 +11,13 @@ use clack_plugin::{
     stream::{InputStream, OutputStream},
     utils::Cookie,
 };
+use serde::{Deserialize, Serialize};
 use std::{
     ffi::CStr,
     fmt::Write as _,
     io::{Read, Write as _},
     sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
 };
-use serde::{Deserialize, Serialize};
 
 /// The default values of the parameters.
 const DEFAULT_ORDER: usize = 1;
@@ -130,14 +130,14 @@ struct PluginState {
 }
 
 impl Default for PluginState {
-	fn default() -> Self {
-		Self {
-			order: DEFAULT_ORDER,
-			window_size: DEFAULT_WINDOW_SIZE.inner(),
-			window_type: DEFAULT_WINDOW_TYPE.as_byte(),
-			complement: DEFAULT_COMPLEMENT,
-		}
-	}
+    fn default() -> Self {
+        Self {
+            order: DEFAULT_ORDER,
+            window_size: DEFAULT_WINDOW_SIZE.inner(),
+            window_type: DEFAULT_WINDOW_TYPE.as_byte(),
+            complement: DEFAULT_COMPLEMENT,
+        }
+    }
 }
 
 impl PluginState {
@@ -186,12 +186,8 @@ impl PluginStateImpl for RetainPluginMainThread<'_> {
         let data = serde_json::from_slice::<PluginState>(&data)?;
 
         self.shared.params.set_order(data.get_order());
-        self.shared
-            .params
-            .set_window_size(data.get_window_size());
-        self.shared
-            .params
-            .set_window_type(data.get_window_type());
+        self.shared.params.set_window_size(data.get_window_size());
+        self.shared.params.set_window_type(data.get_window_type());
         self.shared.params.set_complement(data.get_complement());
 
         Ok(())
