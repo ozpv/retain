@@ -51,7 +51,7 @@ impl Plugin for RetainPlugin {
 impl DefaultPluginFactory for RetainPlugin {
     fn get_descriptor() -> PluginDescriptor {
         PluginDescriptor::new("com.haemolacriaa.retain", "Retain")
-            .with_description("Retains only the nth largest magnitude frequencies in the signal")
+            .with_description("Retains only the nth largest magnitude frequencies in a signal")
             .with_version("0.1.0-pre")
             .with_vendor("haemolacriaa")
             .with_features([AUDIO_EFFECT, STEREO])

@@ -43,7 +43,6 @@ impl WindowFunction for RectangularWindow {
 pub struct HannWindow {
     window_size: usize,
     function: Vec<f32>,
-    normalize: Vec<f32>,
     previous: Vec<f32>,
     overlap_add: Vec<f32>,
 }
@@ -54,33 +53,20 @@ impl HannWindow {
         let half_window_size = window_size / 2;
         let window_size_f32 = window_size as f32;
 
-        // 50% overlap
-        let overlap_add = vec![0.0; window_size];
-
-        // with capacity is important for the first needed samples
-        let previous = Vec::with_capacity(half_window_size);
-
+        // bypass the need for a normalize buffer by using sqrt
         let function = (0..window_size)
             .map(|i| {
                 let i = i as f32;
 
-                0.5 * (1.0 - f32::cos((2.0 * PI * i) / (window_size_f32)))
-            })
-            .collect::<Vec<f32>>();
-
-        let normalize = (0..half_window_size)
-            .map(|i| {
-                (function[i] * function[i])
-                    + (function[i + half_window_size] * function[i + half_window_size])
+                f32::sqrt(0.5 - 0.5 * f32::cos((2.0 * PI * i) / (window_size_f32)))
             })
             .collect::<Vec<f32>>();
 
         Self {
             window_size,
             function,
-            normalize,
-            previous,
-            overlap_add,
+            previous: Vec::with_capacity(half_window_size),
+            overlap_add: vec![0.0; window_size],
         }
     }
 }
@@ -126,17 +112,14 @@ impl WindowFunction for HannWindow {
         let half_window_size = self.window_size / 2;
 
         // overlap add data and save the next overlap (latter half of this buffer)
-        for (i, sample) in data.iter().copied().enumerate() {
-            self.overlap_add[i] += sample * self.function[i];
+        for i in 0..self.window_size {
+            self.overlap_add[i] += data[i] * self.function[i];
         }
 
-        // normalize the output
-        for (i, sample) in data.iter_mut().enumerate().take(half_window_size) {
-            if self.normalize[i] > 1e-6 {
-                *sample = self.overlap_add[i] / self.normalize[i];
-            } else {
-                *sample = 0.0;
-            }
+        // set the output samples
+        // in other functions this will also include normalizing
+        for i in 0..half_window_size {
+            data[i] = self.overlap_add[i];
         }
 
         // shift the saved overlap to become the next overlap
@@ -184,7 +167,7 @@ impl HammingWindow {
             .map(|i| {
                 let i = i as f32;
 
-                0.53836 - (0.46164 * f32::cos((2.0 * PI * i) / (window_size_f32)))
+                0.54 - (0.46 * f32::cos((2.0 * PI * i) / (window_size_f32 - 1.0)))
             })
             .collect::<Vec<f32>>();
 
@@ -300,11 +283,11 @@ impl BlackmanHarrisWindow {
             .map(|i| {
                 let i = i as f32;
 
-                let two = f32::cos((2.0 * PI * i) / (window_size_f32));
-                let four = f32::cos((4.0 * PI * i) / (window_size_f32));
-                let six = f32::cos((6.0 * PI * i) / (window_size_f32));
+                let one = Self::A_1 * f32::cos((2.0 * PI * i) / (window_size_f32));
+                let two = Self::A_2 * f32::cos((4.0 * PI * i) / (window_size_f32));
+                let three = Self::A_3 * f32::cos((6.0 * PI * i) / (window_size_f32));
 
-                Self::A_0 - (Self::A_1 * two) + (Self::A_2 * four) - (Self::A_3 * six)
+                Self::A_0 - one + two - three
             })
             .collect::<Vec<f32>>();
 
@@ -423,8 +406,8 @@ impl Sine4Window {
             .map(|i| {
                 let i = i as f32;
 
-                let two = f32::cos((2.0 * PI * i) / (window_size_f32));
-                let four = f32::cos((4.0 * PI * i) / (window_size_f32));
+                let two = f32::cos((2.0 * PI * i) / (window_size_f32 - 1.0));
+                let four = f32::cos((4.0 * PI * i) / (window_size_f32 - 1.0));
 
                 Self::A_0 - (Self::A_1 * two) + (Self::A_2 * four)
             })
