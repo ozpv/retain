@@ -167,7 +167,7 @@ impl HammingWindow {
             .map(|i| {
                 let i = i as f32;
 
-                0.54 - (0.46 * f32::cos((2.0 * PI * i) / (window_size_f32 - 1.0)))
+                0.54 - (0.46 * f32::cos((2.0 * PI * i) / (window_size_f32)))
             })
             .collect::<Vec<f32>>();
 
@@ -406,10 +406,10 @@ impl Sine4Window {
             .map(|i| {
                 let i = i as f32;
 
-                let two = f32::cos((2.0 * PI * i) / (window_size_f32 - 1.0));
-                let four = f32::cos((4.0 * PI * i) / (window_size_f32 - 1.0));
+                let one = Self::A_1 * f32::cos((2.0 * PI * i) / (window_size_f32));
+                let two = Self::A_2 * f32::cos((4.0 * PI * i) / (window_size_f32));
 
-                Self::A_0 - (Self::A_1 * two) + (Self::A_2 * four)
+                Self::A_0 - one + two
             })
             .collect::<Vec<f32>>();
 
