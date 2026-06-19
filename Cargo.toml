@@ -19,8 +19,7 @@ clack-extensions = { path = "../clack/extensions", features = [
     "state",
 	"latency",
 ] }
-baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "237d323c729f3aa99476ba3efa50129c5e86cad3", version = "0.1.0" }
-egui-baseview = { git = "https://codeberg.org/BillyDM/egui-baseview.git", version = "0.7.0" }
+egui-baseview = { git = "https://codeberg.org/RustAudio/egui-baseview.git", version = "0.2.7" }
 
 # for calculation
 realfft = { version = "3.5.0", features = ["avx", "neon", "sse"] }
@@ -31,6 +30,7 @@ atomic_float = "1.1.0"
 # for saving the state
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+egui = "0.34.3"
 
 [profile.release]
 opt-level = 3

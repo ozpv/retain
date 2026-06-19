@@ -5,12 +5,12 @@ use crate::{
     window_type::WindowType,
 };
 use atomic_float::AtomicF32;
-use baseview::{Size, WindowHandle, WindowOpenOptions, WindowScalePolicy, gl::GlConfig};
 use clack_extensions::gui::{GuiApiType, GuiConfiguration, GuiSize, PluginGuiImpl, Window};
 use clack_plugin::prelude::*;
+use egui::{Align, CentralPanel, ComboBox, Context, Layout, Slider, Ui, Vec2, ViewportCommand};
 use egui_baseview::{
     EguiWindow, GraphicsConfig, Queue,
-    egui::{Align, CentralPanel, ComboBox, Context, Layout, Slider, Vec2, ViewportCommand},
+    baseview::{Size, WindowHandle, WindowOpenOptions, WindowScalePolicy, gl::GlConfig},
 };
 use std::sync::{Arc, atomic::Ordering};
 
@@ -108,10 +108,10 @@ impl RetainPluginGui {
             move |ctx: &Context, _queue: &mut Queue, _state: &mut AppState| {
                 tx.send(ctx.clone()).unwrap();
             },
-            |ctx: &Context, _queue: &mut Queue, state: &mut AppState| {
-                ctx.send_viewport_cmd(ViewportCommand::InnerSize(state.gui_size.as_vec2()));
+            |ui: &mut Ui, _queue: &mut Queue, state: &mut AppState| {
+                ui.send_viewport_cmd(ViewportCommand::InnerSize(state.gui_size.as_vec2()));
 
-                CentralPanel::default().show(ctx, |ui| {
+                CentralPanel::default().show_inside(ui, |ui| {
                     ui.heading("Retain");
 
                     ui.horizontal(|ui| {

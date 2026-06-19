@@ -58,7 +58,7 @@ impl DefaultPluginFactory for RetainPlugin {
     }
 
     fn new_shared(host: HostSharedHandle<'_>) -> Result<Self::Shared<'_>, PluginError> {
-        Ok(RetainPluginShared::new(host))
+        Ok(Self::Shared::new(host))
     }
 
     fn new_main_thread<'a>(
