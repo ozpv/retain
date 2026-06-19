@@ -1,12 +1,9 @@
 use crate::{
-    window_function::{
-        BlackmanHarrisWindow, HammingWindow, HannWindow, RectangularWindow, Sine4Window,
-        WindowFunction,
-    },
+    window_function::{BlackmanHarrisWindow, HammingWindow, HannWindow, RectangularWindow, Sine4Window, WindowFunction},
     window_size::WindowSize,
 };
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum WindowType {
     Rectangular,
     Hann,

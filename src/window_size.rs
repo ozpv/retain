@@ -1,7 +1,8 @@
-/// The max value of the custom window size is `u32::MAX`.
-/// The min value of the custom window size is `WindowSize::Size256`.
-/// This is because it's the maximum latency one can report to a CLAP host.
-#[derive(Debug, Clone, PartialEq)]
+/// Window sizes supported by the Retain plugin.
+///
+/// This is intentionally simple: a fixed set of preferred sizes plus a custom
+/// fallback for any valid size.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WindowSize {
     Size256,
     Size512,
@@ -17,7 +18,6 @@ pub enum WindowSize {
 impl From<usize> for WindowSize {
     fn from(item: usize) -> Self {
         let item = item.clamp(256, u32::MAX as usize);
-
         match item {
             256 => Self::Size256,
             512 => Self::Size512,
@@ -43,7 +43,7 @@ impl WindowSize {
             Self::Size8192 => "8192",
             Self::Size16384 => "16384",
             Self::Size32768 => "32768",
-            Self::Custom(_) => "",
+            Self::Custom(_) => "Custom",
         }
     }
 

@@ -23,6 +23,8 @@ pub struct WindowedRealFft {
 
 impl WindowedRealFft {
     pub fn new(window_size: WindowSize) -> Self {
+        // 💡 this is the core FFT state: window shape, forward/inverse plans,
+        // and temporary buffers for processing in a simple pipeline.
         let window_function = DEFAULT_WINDOW_TYPE.new_function(&window_size);
         let window_size = window_size.inner();
 
@@ -32,10 +34,7 @@ impl WindowedRealFft {
 
         let input = VecDeque::with_capacity(window_size);
         let output = VecDeque::with_capacity(window_size);
-
         let spectrum = vec![Complex::ZERO; (window_size / 2) + 1];
-
-        // scratches should be the same length for both left and right channels
         let scratch = forward.make_scratch_vec();
 
         Self {
@@ -54,10 +53,7 @@ impl WindowedRealFft {
     pub fn window_function(&mut self, window_type: &WindowType) {
         self.input.clear();
         self.output.clear();
-
-        let window_function = window_type.new_function(&WindowSize::from(self.window_size));
-
-        self.window_function = window_function;
+        self.window_function = window_type.new_function(&WindowSize::from(self.window_size));
     }
 
     pub fn window_size(&mut self, window_size: WindowSize) {
@@ -73,15 +69,11 @@ impl WindowedRealFft {
 
         self.input.reserve_exact(self.window_size);
         self.output.reserve_exact(self.window_size);
-
         self.input.clear();
         self.output.clear();
 
-        self.spectrum
-            .resize((self.window_size / 2) + 1, Complex::ZERO);
-
-        self.scratch
-            .resize(self.forward.get_scratch_len(), Complex::ZERO);
+        self.spectrum.resize((self.window_size / 2) + 1, Complex::ZERO);
+        self.scratch.resize(self.forward.get_scratch_len(), Complex::ZERO);
     }
 
     pub fn clear_input(&mut self) {
@@ -126,6 +118,8 @@ impl WindowedRealFft {
             *sample /= window_size_f32;
         }
 
+        // 🧩 windowed synthesis step is clear and in one place.
+        // This would be easy to mirror in a JS audio worker too.
         self.window_function.reverse(self.output.make_contiguous());
     }
 }

@@ -1,55 +1,49 @@
 use num_complex::Complex;
-use rustc_hash::FxHashSet;
 
+/// Keeps the top `n` magnitudes in the spectrum.
+///
+/// This function is intentionally easy to follow: compute magnitudes,
+/// sort them, and then keep or remove values based on the `complement` flag.
+/// Future JS/WASM ports can reuse this same logic almost directly.
+/// If you ever want to rewrite this in JavaScript, the core idea is already here.
 #[inline(always)]
 pub fn retain_top_n_magnitudes(spectrum: &mut [Complex<f32>], n: usize, complement: bool) {
-    // you'd be keeping the entire signal
-    if n >= spectrum.len() && !complement {
+    let len = spectrum.len();
+    if len == 0 {
         return;
     }
 
-    if n == 0 && complement {
-        return;
-    }
-
-    // keeping nothing at all
-    if n == 0 && !complement {
-        for phasor in spectrum {
-            *phasor = Complex::ZERO;
+    if n == 0 {
+        if !complement {
+            spectrum.fill(Complex::ZERO);
         }
-
         return;
     }
 
-    if n >= spectrum.len() && complement {
-        for phasor in spectrum {
-            *phasor = Complex::ZERO;
+    if n >= len {
+        if complement {
+            spectrum.fill(Complex::ZERO);
         }
-
         return;
     }
 
-    let mut indexed = spectrum
+    let mut magnitudes: Vec<(usize, f32)> = spectrum
         .iter()
-        .copied()
         .enumerate()
-        .collect::<Vec<(usize, Complex<f32>)>>();
+        .map(|(index, value)| (index, value.norm()))
+        .collect();
 
-    let target = spectrum.len() - n;
-    indexed.select_nth_unstable_by(target, |(_, c0), (_, c1)| c0.norm().total_cmp(&c1.norm()));
+    magnitudes.sort_unstable_by(|a, b| a.1.total_cmp(&b.1));
 
-    let top_indices = indexed[target..]
-        .iter()
-        .map(|&(i, _)| i)
-        .collect::<FxHashSet<usize>>();
+    let mut keep = vec![false; len];
+    for &(index, _) in &magnitudes[len - n..] {
+        keep[index] = true;
+    }
 
-    for (i, phasor) in spectrum.iter_mut().enumerate() {
-        if top_indices.contains(&i) && complement {
-            *phasor = Complex::ZERO;
-        }
-
-        if !top_indices.contains(&i) && !complement {
-            *phasor = Complex::ZERO;
+    for (index, value) in spectrum.iter_mut().enumerate() {
+        let should_zero = if complement { keep[index] } else { !keep[index] };
+        if should_zero {
+            *value = Complex::ZERO;
         }
     }
 }

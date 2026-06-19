@@ -48,8 +48,8 @@ impl AtomicVec2 {
         self.y.load(Ordering::SeqCst)
     }
 
-    pub fn set_y(&self, x: f32) {
-        self.y.store(x, Ordering::SeqCst);
+    pub fn set_y(&self, y: f32) {
+        self.y.store(y, Ordering::SeqCst);
     }
 
     pub fn as_vec2(&self) -> Vec2 {
@@ -61,6 +61,10 @@ impl AtomicVec2 {
 }
 
 /// The EGUI application state
+///
+/// Simple state management so the UI is friendly and easy to follow.
+/// This is intentionally not a wild state machine, so it's easier to port
+/// to a JavaScript UI system later if you want. 🎨
 struct AppState {
     /// A handle to the shared params state
     params: Arc<RetainParams>,
@@ -197,6 +201,9 @@ impl RetainPluginGui {
         self.egui_context.request_repaint();
     }
 }
+
+/// This is a good place to think about how the same UI state could live in JS.
+/// The GUI is simple: params, a slider, and a couple of combo boxes. Easy win.
 
 impl Drop for RetainPluginGui {
     fn drop(&mut self) {

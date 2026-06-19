@@ -10,10 +10,7 @@ use clack_extensions::{
     params::PluginParams,
     state::PluginState,
 };
-use clack_plugin::{
-    plugin::features::{AUDIO_EFFECT, STEREO},
-    prelude::*,
-};
+use clack_plugin::{plugin::features::{AUDIO_EFFECT, STEREO}, prelude::*};
 use std::sync::Arc;
 
 mod audio;
@@ -25,9 +22,11 @@ mod window_size;
 mod window_type;
 mod windowed_fft;
 
-/// The type that represents our plugin in Clack.
+/// 🎧 The main plugin entry point for the Retain audio effect.
 ///
-/// This is what implements the [`Plugin`] trait, where all the other subtypes are attached.
+/// Clean, readable, and focused on the plugin's structure.
+/// This should feel simple enough that the whole plugin could be
+/// prototyped later in JavaScript or a web-based audio stack. 🚀
 pub struct RetainPlugin;
 
 impl Plugin for RetainPlugin {
@@ -58,7 +57,7 @@ impl DefaultPluginFactory for RetainPlugin {
     }
 
     fn new_shared(host: HostSharedHandle<'_>) -> Result<Self::Shared<'_>, PluginError> {
-        Ok(RetainPluginShared::new(host))
+        Ok(Self::Shared::new(host))
     }
 
     fn new_main_thread<'a>(
@@ -69,9 +68,9 @@ impl DefaultPluginFactory for RetainPlugin {
     }
 }
 
-/// The plugin data that gets shared between the Main Thread and the Audio Thread.
+/// Shared state between audio and main threads.
+/// This keeps parameter data and GUI layout state synchronized.
 pub struct RetainPluginShared<'a> {
-    /// The plugin's parameter values.
     params: Arc<RetainParams>,
     gui_size: Arc<AtomicVec2>,
     host: HostSharedHandle<'a>,
@@ -79,7 +78,7 @@ pub struct RetainPluginShared<'a> {
 
 impl<'a> RetainPluginShared<'a> {
     fn new(host: HostSharedHandle<'a>) -> Self {
-        RetainPluginShared {
+        Self {
             params: Arc::new(RetainParams::new()),
             gui_size: Arc::new(AtomicVec2::new()),
             host,
@@ -89,11 +88,9 @@ impl<'a> RetainPluginShared<'a> {
 
 impl<'a> PluginShared<'a> for RetainPluginShared<'a> {}
 
-/// The data that belongs to the main thread of our plugin.
+/// Main thread state and GUI ownership.
 pub struct RetainPluginMainThread<'a> {
-    /// A reference to the plugin's shared data.
     shared: &'a RetainPluginShared<'a>,
-    /// The plugin's GUI state and context
     gui: Option<RetainPluginGui>,
 }
 
