@@ -1,6 +1,3 @@
-/// The max value of the custom window size is `u32::MAX`.
-/// The min value of the custom window size is `WindowSize::Size256`.
-/// This is because it's the maximum latency one can report to a CLAP host.
 #[derive(Debug, Clone, PartialEq)]
 pub enum WindowSize {
     Size256,
@@ -11,6 +8,8 @@ pub enum WindowSize {
     Size8192,
     Size16384,
     Size32768,
+    // Forced to use IntParam for this because of this "custom" field
+    // Midi support for time synced window sizes will be added in the future
     Custom(usize),
 }
 

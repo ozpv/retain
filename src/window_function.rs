@@ -1,18 +1,13 @@
 use crate::window_size::WindowSize;
 use std::{collections::VecDeque, f32::consts::PI};
 
-pub trait WindowFunction: Send {
-    /// Apply the window in-place
+pub trait WindowFunction: Send + Sync {
     fn apply(&mut self, data: &mut VecDeque<f32>);
-    /// Reverse the window in-place
     fn reverse(&mut self, data: &mut [f32]);
-    /// Yields the amount of samples still required to apply the window
     fn needed(&self) -> usize;
-    /// Take the steps necessary to handle a resize
     fn resize(&mut self, window_size: &WindowSize);
 }
 
-/// Effectively a chunking function
 pub struct RectangularWindow {
     window_size: usize,
 }
@@ -43,8 +38,6 @@ impl WindowFunction for RectangularWindow {
     }
 }
 
-/// Hann function
-/// Implemented using sqrt Hann
 pub struct HannWindow {
     window_size: usize,
     function: Vec<f32>,
@@ -104,15 +97,13 @@ impl WindowFunction for HannWindow {
         let half_window_size = self.window_size / 2;
 
         // overlap add data and save the next overlap (latter half of this buffer)
-        for i in 0..self.window_size {
-            self.overlap_add[i] += data[i] * self.function[i];
+        for (i, sample) in data.iter().enumerate().take(self.window_size) {
+            self.overlap_add[i] += sample * self.function[i];
         }
 
         // set the output samples
-        // in other functions this will also include normalizing
-        for i in 0..half_window_size {
-            data[i] = self.overlap_add[i];
-        }
+        // in other functions this will also include normalizing in a loop
+		data[..half_window_size].copy_from_slice(&self.overlap_add[..half_window_size]);
 
         // shift the saved overlap to become the next overlap
         self.overlap_add.rotate_left(half_window_size);
@@ -132,7 +123,6 @@ impl WindowFunction for HannWindow {
     }
 }
 
-/// Hamming function
 pub struct HammingWindow {
     window_size: usize,
     function: Vec<f32>,
@@ -157,7 +147,8 @@ impl HammingWindow {
             })
             .collect::<Vec<f32>>();
 
-        // not exact but good enough
+        // not exact reconstruction but good enough
+        // I'm thinking of removing the hamming window
         let normalize = (0..half_window_size)
             .map(|i| {
                 (function[i] * function[i])
@@ -228,7 +219,6 @@ impl WindowFunction for HammingWindow {
     }
 }
 
-/// 4-term Blackman-Harris window function
 pub struct BlackmanHarrisWindow {
     window_size: usize,
     function: Vec<f32>,
@@ -337,7 +327,6 @@ impl WindowFunction for BlackmanHarrisWindow {
     }
 }
 
-/// 4th power of sine window function
 pub struct Sine4Window {
     window_size: usize,
     function: Vec<f32>,

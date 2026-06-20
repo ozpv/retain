@@ -1,35 +1,26 @@
 [package]
 name = "retain"
-version = "0.1.0-pre"
+version = "0.1.0-pre2"
+authors = [ "haemolacriaa" ]
+description = "Retain is a real-time audio plugin that retains the nth largest magnitude frequencies in a signal"
 edition = "2024"
+repository = "https://git.haemolacriaa.com/retain"
+publish = false
 
 [lib]
 crate-type = ["rlib", "cdylib"]
 
-
 [dependencies]
-clack-plugin = { path = "../clack/plugin" }
-clack-extensions = { path = "../clack/extensions", features = [
-    "audio-ports",
-    "clack-plugin",
-    "gui",
-    "note-ports",
-    "params",
-    "raw-window-handle_05",
-    "state",
-	"latency",
-] }
-egui-baseview = { git = "https://codeberg.org/RustAudio/egui-baseview.git", version = "0.2.7" }
-
-# for calculation
+nice-plug = { 
+	path = "../nice-plug/crates/nice-plug", 
+	version = "0.1.0", 
+	features = ["assert_process_allocs"] 
+}
+nice-plug-egui = { path = "../nice-plug/crates/nice-plug-egui", version = "0.1.5" }
 realfft = { version = "3.5.0", features = ["avx", "neon", "sse"] }
 num-complex = "0.4.6"
 rustc-hash = "2.1.2"
-atomic_float = "1.1.0"
-
-# for saving the state
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.150"
+rtrb = "0.3.4"
 egui = "0.34.3"
 
 [profile.release]

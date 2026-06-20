@@ -5,8 +5,9 @@ use crate::{
     },
     window_size::WindowSize,
 };
+use nice_plug::prelude::*;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Enum)]
 pub enum WindowType {
     Rectangular,
     Hann,

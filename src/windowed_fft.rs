@@ -2,7 +2,7 @@
 #![allow(clippy::return_self_not_must_use)]
 
 use crate::{
-    params::DEFAULT_WINDOW_TYPE, window_function::WindowFunction, window_size::WindowSize,
+    DEFAULT_WINDOW_TYPE, window_function::WindowFunction, window_size::WindowSize,
     window_type::WindowType,
 };
 use num_complex::Complex;
@@ -22,6 +22,8 @@ pub struct WindowedRealFft {
 }
 
 impl WindowedRealFft {
+	// clippy is very wrong here and passing window_size by ref will result in errors
+	#[allow(clippy::needless_pass_by_value)]
     pub fn new(window_size: WindowSize) -> Self {
         let window_function = DEFAULT_WINDOW_TYPE.new_function(&window_size);
         let window_size = window_size.inner();
@@ -35,7 +37,8 @@ impl WindowedRealFft {
 
         let spectrum = vec![Complex::ZERO; (window_size / 2) + 1];
 
-        // scratches should be the same length for both left and right channels
+        // scratches should theoretically be the same length for forward and inverse operations
+		// So I reuse it on to save on allocations
         let scratch = forward.make_scratch_vec();
 
         Self {
@@ -60,6 +63,8 @@ impl WindowedRealFft {
         self.window_function = window_function;
     }
 
+	// clippy is very wrong here and passing window_size by ref will result in errors
+	#[allow(clippy::needless_pass_by_value)]
     pub fn window_size(&mut self, window_size: WindowSize) {
         if window_size == self.window_size.into() {
             return;
