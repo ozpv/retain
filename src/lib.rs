@@ -7,7 +7,7 @@ mod window_type;
 mod windowed_fft;
 
 use crate::{
-    retain::retain_top_n_magnitudes, window_size::WindowSize, window_type::WindowType,
+    retain::RetainAlgorithm, window_size::WindowSize, window_type::WindowType,
     windowed_fft::WindowedRealFft,
 };
 use egui::{Align, CentralPanel, ComboBox, Layout, Slider, Vec2};
@@ -31,6 +31,7 @@ pub struct Retain {
     initial_gui_state: Option<GuiState>,
     fft_left: WindowedRealFft,
     fft_right: WindowedRealFft,
+	retain_algorithm: RetainAlgorithm,
 }
 
 impl Default for Retain {
@@ -50,6 +51,7 @@ impl Default for Retain {
             }),
             fft_left,
             fft_right,
+			retain_algorithm: RetainAlgorithm::new(),
         }
     }
 }
@@ -57,7 +59,7 @@ impl Default for Retain {
 #[derive(Params)]
 pub struct RetainParams {
     /// This allows the resizing of the plugin to be restored
-    #[persist = "editor-state"]
+    #[persist = "editor_state"]
     editor_state: Arc<EguiState>,
 
     /// the number of top frequencies to keep
@@ -70,11 +72,11 @@ pub struct RetainParams {
     pub window_size: IntParam,
 
     /// the type of window function used to reduce spectral leakage or clicking sounds
-    /// changing this makes a big difference
+    /// playing with this makes a big difference in output
     #[id = "window_type"]
     pub window_type: EnumParam<WindowType>,
 
-    /// whether the plugin retains or removes the highest magnitudes
+    /// whether the plugin retains or removes the highest magnitude frequencies
     #[id = "complement"]
     pub complement: BoolParam,
 }
@@ -304,7 +306,7 @@ impl Plugin for Retain {
 					let order = self.params.order.value() as usize;
 					let complement = self.params.complement.value();
 
-                    retain_top_n_magnitudes(self.fft_left.get_spectrum(), order, complement);
+                    self.retain_algorithm.calculate(self.fft_left.get_spectrum(), order, complement);
 
                     self.fft_left.inverse();
                     self.fft_left.clear_input();
@@ -320,7 +322,7 @@ impl Plugin for Retain {
 					let order = self.params.order.value() as usize;
 					let complement = self.params.complement.value();
 
-                    retain_top_n_magnitudes(self.fft_right.get_spectrum(), order, complement);
+                    self.retain_algorithm.calculate(self.fft_right.get_spectrum(), order, complement);
 
                     self.fft_right.inverse();
                     self.fft_right.clear_input();
