@@ -103,7 +103,7 @@ impl WindowFunction for HannWindow {
 
         // set the output samples
         // in other functions this will also include normalizing in a loop
-		data[..half_window_size].copy_from_slice(&self.overlap_add[..half_window_size]);
+        data[..half_window_size].copy_from_slice(&self.overlap_add[..half_window_size]);
 
         // shift the saved overlap to become the next overlap
         self.overlap_add.rotate_left(half_window_size);

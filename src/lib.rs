@@ -19,11 +19,10 @@ use rtrb::RingBuffer;
 use std::sync::Arc;
 
 pub const DEFAULT_WINDOW_TYPE: WindowType = WindowType::Hann;
-
 const MIN_WINDOW_WIDTH: u32 = 600;
 const MIN_WINDOW_HEIGHT: u32 = 350;
-
-const GUI_TO_AUDIO_CHANNEL_CAPACITY: usize = 128;
+const GUI_TO_AUDIO_CHANNEL_CAPACITY: usize = 32;
+const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 pub struct Retain {
     params: Arc<RetainParams>,
@@ -31,7 +30,23 @@ pub struct Retain {
     initial_gui_state: Option<GuiState>,
     fft_left: WindowedRealFft,
     fft_right: WindowedRealFft,
-	retain_algorithm: RetainAlgorithm,
+    retain_algorithm: RetainAlgorithm,
+}
+
+impl Retain {
+    fn window_size_update(&mut self) {
+        let window_size = self.params.window_size.value() as usize;
+
+        self.fft_left.window_size(window_size.into());
+        self.fft_right.window_size(window_size.into());
+    }
+
+    fn window_type_update(&mut self) {
+        let window_type = self.params.window_type.value();
+
+        self.fft_left.window_function(&window_type);
+        self.fft_right.window_function(&window_type);
+    }
 }
 
 impl Default for Retain {
@@ -51,7 +66,7 @@ impl Default for Retain {
             }),
             fft_left,
             fft_right,
-			retain_algorithm: RetainAlgorithm::new(),
+            retain_algorithm: RetainAlgorithm::new(),
         }
     }
 }
@@ -68,12 +83,12 @@ pub struct RetainParams {
 
     /// the window size of the fft
     /// this effects the frequency resolution and can make for cool effects
-    #[id = "window_size"]
+    #[id = "size"]
     pub window_size: IntParam,
 
     /// the type of window function used to reduce spectral leakage or clicking sounds
     /// playing with this makes a big difference in output
-    #[id = "window_type"]
+    #[id = "type"]
     pub window_type: EnumParam<WindowType>,
 
     /// whether the plugin retains or removes the highest magnitude frequencies
@@ -127,7 +142,7 @@ impl Plugin for Retain {
     const VENDOR: &'static str = "haemolacriaa";
     const URL: &'static str = "https://git.haemolacriaa.com/retain/";
     const EMAIL: &'static str = "";
-    const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+    const VERSION: &'static str = VERSION;
     const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
         main_input_channels: NonZeroU32::new(2),
         main_output_channels: NonZeroU32::new(2),
@@ -144,11 +159,17 @@ impl Plugin for Retain {
         _buffer_config: &BufferConfig,
         context: &mut impl InitContext<Self>,
     ) -> bool {
+        // I figured out one must do this for parameters that only change by messages
+        // otherwise duplicating the instance will reset these to default and the GUI will be incorrect
+        self.window_size_update();
+        self.window_type_update();
+
         context.set_latency_samples(self.params.window_size.value().cast_unsigned());
 
         true
     }
 
+    // TODO add a spectrum analyzer for eye candy
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         let params = self.params.clone();
         let egui_state = params.editor_state.clone();
@@ -162,7 +183,16 @@ impl Plugin for Retain {
                 ResizableWindow::new("retainwindow")
                     .min_size(Vec2::new(MIN_WINDOW_WIDTH as f32, MIN_WINDOW_HEIGHT as f32))
                     .show(ui, egui_state.as_ref(), |ui| {
-                        CentralPanel::default().show_inside(ui, |ui| {
+						CentralPanel::default().show_inside(ui, |ui| {
+							/* TODO find a way to request the window size from the host to fix a resize glitch in reaper
+							let size = egui_state.size();
+							let size = Vec2 {
+								x: size.0 as f32,
+								y: size.1 as f32,
+							};
+							ui.send_viewport_cmd(ViewportCommand::InnerSize(size));
+							*/
+
                             ui.heading("Retain");
 
                             ui.horizontal(|ui| {
@@ -251,7 +281,11 @@ impl Plugin for Retain {
                                         });
                                 });
                             });
-                        });
+
+							ui.with_layout(Layout::bottom_up(Align::LEFT), |ui| {
+								ui.label(format!("{VERSION} by {}", Self::VENDOR))
+							});
+						});
                     });
             },
         )
@@ -263,7 +297,7 @@ impl Plugin for Retain {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-		// this is to prevent multiple updates from slowing this thread down if it somehow happens
+        // this is to prevent multiple updates from slowing this thread down if the channel is backed up
         let mut previously_updated_window_size = false;
         let mut previously_updated_window_type = false;
 
@@ -274,12 +308,11 @@ impl Plugin for Retain {
                         continue;
                     }
 
-                    let window_size = self.params.window_size.value() as usize;
+                    self.window_size_update();
 
-                    self.fft_left.window_size(window_size.into());
-                    self.fft_right.window_size(window_size.into());
+                    let window_size = self.params.window_size.value().cast_unsigned();
 
-                    context.set_latency_samples(window_size as u32);
+                    context.set_latency_samples(window_size);
 
                     previously_updated_window_size = true;
                 }
@@ -288,25 +321,26 @@ impl Plugin for Retain {
                         continue;
                     }
 
-                    let window_type = self.params.window_type.value();
-
-                    self.fft_left.window_function(&window_type);
-                    self.fft_right.window_function(&window_type);
+                    self.window_type_update();
 
                     previously_updated_window_type = true;
                 }
             }
         }
-		
+
         if let [left, right] = buffer.as_slice() {
             for sample in left.iter_mut() {
                 if self.fft_left.push_back_input(*sample) {
                     self.fft_left.forward();
-					
-					let order = self.params.order.value() as usize;
-					let complement = self.params.complement.value();
 
-                    self.retain_algorithm.calculate(self.fft_left.get_spectrum(), order, complement);
+                    let order = self.params.order.value() as usize;
+                    let complement = self.params.complement.value();
+
+                    self.retain_algorithm.calculate(
+                        self.fft_left.get_spectrum(),
+                        order,
+                        complement,
+                    );
 
                     self.fft_left.inverse();
                     self.fft_left.clear_input();
@@ -318,11 +352,15 @@ impl Plugin for Retain {
             for sample in right.iter_mut() {
                 if self.fft_right.push_back_input(*sample) {
                     self.fft_right.forward();
-					
-					let order = self.params.order.value() as usize;
-					let complement = self.params.complement.value();
 
-                    self.retain_algorithm.calculate(self.fft_right.get_spectrum(), order, complement);
+                    let order = self.params.order.value() as usize;
+                    let complement = self.params.complement.value();
+
+                    self.retain_algorithm.calculate(
+                        self.fft_right.get_spectrum(),
+                        order,
+                        complement,
+                    );
 
                     self.fft_right.inverse();
                     self.fft_right.clear_input();
@@ -342,8 +380,9 @@ impl Plugin for Retain {
 
 impl ClapPlugin for Retain {
     const CLAP_ID: &'static str = "com.haemolacriaa.retain";
-    const CLAP_DESCRIPTION: Option<&'static str> =
-        Some("Retain is a real-time audio plugin that retains the nth largest magnitude frequencies in a signal");
+    const CLAP_DESCRIPTION: Option<&'static str> = Some(
+        "Retain is a real-time audio plugin that retains the nth largest magnitude frequencies in a signal",
+    );
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
     const CLAP_FEATURES: &'static [ClapFeature] = &[
